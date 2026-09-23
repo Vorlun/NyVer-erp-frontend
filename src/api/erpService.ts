@@ -55,6 +55,21 @@ function setLocalFallback<T>(key: string, data: T): void {
   }
 }
 
+// In-flight so'rovlarni birlashtirish (bir vaqtda bir xil API ga ortiqcha takroriy so'rov ketmasligi uchun)
+const inFlightRequests = new Map<string, Promise<any>>();
+
+function dedupApi<T>(key: string, requestFn: () => Promise<T>): Promise<T> {
+  const existing = inFlightRequests.get(key);
+  if (existing) {
+    return existing as Promise<T>;
+  }
+  const promise = requestFn().finally(() => {
+    inFlightRequests.delete(key);
+  });
+  inFlightRequests.set(key, promise);
+  return promise;
+}
+
 class ErpService {
   // ============ AUTH ============
   async login(login: string, password: string) {
@@ -120,36 +135,39 @@ class ErpService {
 
   // ============ USERS ============
   async getUsers(params?: { role?: string; status?: string; search?: string; page?: number; limit?: number }) {
-    try {
-      const res = await apiClient.get('/users', { params });
-      const data = unwrap<{ data: User[]; meta: { total: number; page: number; limit: number; totalPages: number } }>(res);
-      if (data && Array.isArray(data.data) && data.data.length > 0) {
-        setLocalFallback('users', data.data);
+    const cacheKey = `users_${JSON.stringify(params || {})}`;
+    return dedupApi(cacheKey, async () => {
+      try {
+        const res = await apiClient.get('/users', { params });
+        const data = unwrap<{ data: User[]; meta: { total: number; page: number; limit: number; totalPages: number } }>(res);
+        if (data && Array.isArray(data.data) && data.data.length > 0) {
+          setLocalFallback('users', data.data);
+        }
+        return data;
+      } catch (err) {
+        console.warn("API getUsers failed, using fallback mock data:", err);
+        let list = getLocalFallback<User[]>('users', initialUsers);
+        if (params?.role) {
+          list = list.filter((u) => u.role === params.role);
+        }
+        if (params?.status) {
+          list = list.filter((u) => u.status === params.status);
+        }
+        if (params?.search) {
+          const q = params.search.toLowerCase();
+          list = list.filter(
+            (u) =>
+              u.firstName.toLowerCase().includes(q) ||
+              u.lastName.toLowerCase().includes(q) ||
+              u.phone.includes(q)
+          );
+        }
+        return {
+          data: list,
+          meta: { total: list.length, page: 1, limit: params?.limit || 100, totalPages: 1 },
+        };
       }
-      return data;
-    } catch (err) {
-      console.warn("API getUsers failed, using fallback mock data:", err);
-      let list = getLocalFallback<User[]>('users', initialUsers);
-      if (params?.role) {
-        list = list.filter((u) => u.role === params.role);
-      }
-      if (params?.status) {
-        list = list.filter((u) => u.status === params.status);
-      }
-      if (params?.search) {
-        const q = params.search.toLowerCase();
-        list = list.filter(
-          (u) =>
-            u.firstName.toLowerCase().includes(q) ||
-            u.lastName.toLowerCase().includes(q) ||
-            u.phone.includes(q)
-        );
-      }
-      return {
-        data: list,
-        meta: { total: list.length, page: 1, limit: params?.limit || 100, totalPages: 1 },
-      };
-    }
+    });
   }
 
   async getUserById(id: number) {
@@ -244,17 +262,19 @@ class ErpService {
 
   // ============ COURSES ============
   async getCourses() {
-    try {
-      const res = await apiClient.get('/courses');
-      const data = unwrap<Course[]>(res);
-      if (Array.isArray(data) && data.length > 0) {
-        setLocalFallback('courses', data);
+    return dedupApi('courses', async () => {
+      try {
+        const res = await apiClient.get('/courses');
+        const data = unwrap<Course[]>(res);
+        if (Array.isArray(data) && data.length > 0) {
+          setLocalFallback('courses', data);
+        }
+        return data;
+      } catch (err) {
+        console.warn("API getCourses failed, using fallback data:", err);
+        return getLocalFallback<Course[]>('courses', initialCourses);
       }
-      return data;
-    } catch (err) {
-      console.warn("API getCourses failed, using fallback data:", err);
-      return getLocalFallback<Course[]>('courses', initialCourses);
-    }
+    });
   }
 
   async getCourseById(id: number) {
@@ -402,20 +422,23 @@ class ErpService {
 
   // ============ GROUPS ============
   async getGroups(params?: { courseId?: number; status?: string; teacherId?: number }) {
-    try {
-      const res = await apiClient.get('/groups', { params });
-      const data = unwrap<Group[]>(res);
-      if (Array.isArray(data) && data.length > 0) {
-        setLocalFallback('groups', data);
+    const key = `groups_${JSON.stringify(params || {})}`;
+    return dedupApi(key, async () => {
+      try {
+        const res = await apiClient.get('/groups', { params });
+        const data = unwrap<Group[]>(res);
+        if (Array.isArray(data) && data.length > 0) {
+          setLocalFallback('groups', data);
+        }
+        return data;
+      } catch (err) {
+        console.warn("API getGroups failed, using fallback data:", err);
+        let list = getLocalFallback<Group[]>('groups', initialGroups);
+        if (params?.status) list = list.filter((g) => g.status === params.status);
+        if (params?.courseId) list = list.filter((g) => g.courseId === params.courseId);
+        return list;
       }
-      return data;
-    } catch (err) {
-      console.warn("API getGroups failed, using fallback data:", err);
-      let list = getLocalFallback<Group[]>('groups', initialGroups);
-      if (params?.status) list = list.filter((g) => g.status === params.status);
-      if (params?.courseId) list = list.filter((g) => g.courseId === params.courseId);
-      return list;
-    }
+    });
   }
 
   async getGroupById(id: number) {
@@ -506,8 +529,11 @@ class ErpService {
 
   // ============ LESSONS ============
   async getLessons(params?: { groupId?: number; teacherId?: number; dateFrom?: string; dateTo?: string }) {
-    const res = await apiClient.get('/lessons', { params });
-    return unwrap<Lesson[]>(res);
+    const key = `lessons_${JSON.stringify(params || {})}`;
+    return dedupApi(key, async () => {
+      const res = await apiClient.get('/lessons', { params });
+      return unwrap<Lesson[]>(res);
+    });
   }
 
   async getLessonById(id: number) {
@@ -638,26 +664,29 @@ class ErpService {
 
   // ============ PAYMENTS ============
   async getPayments(params?: { studentId?: number; status?: string; dateFrom?: string; dateTo?: string }) {
-    try {
-      const res = await apiClient.get('/payments', { params });
-      const unwrapped = unwrap<{ data: Payment[]; total: number; totalAmount: number }>(res);
-      if (unwrapped && Array.isArray(unwrapped.data)) {
-        const local = getLocalFallback<Payment[]>('payments', []);
-        if (local.length > 0) {
-          const existingIds = new Set(unwrapped.data.map((p) => p.id));
-          const uniqueLocal = local.filter((p) => !existingIds.has(p.id));
-          if (uniqueLocal.length > 0) {
-            unwrapped.data = [...uniqueLocal, ...unwrapped.data];
-            unwrapped.total += uniqueLocal.length;
+    const key = `payments_${JSON.stringify(params || {})}`;
+    return dedupApi(key, async () => {
+      try {
+        const res = await apiClient.get('/payments', { params });
+        const unwrapped = unwrap<{ data: Payment[]; total: number; totalAmount: number }>(res);
+        if (unwrapped && Array.isArray(unwrapped.data)) {
+          const local = getLocalFallback<Payment[]>('payments', []);
+          if (local.length > 0) {
+            const existingIds = new Set(unwrapped.data.map((p) => p.id));
+            const uniqueLocal = local.filter((p) => !existingIds.has(p.id));
+            if (uniqueLocal.length > 0) {
+              unwrapped.data = [...uniqueLocal, ...unwrapped.data];
+              unwrapped.total += uniqueLocal.length;
+            }
           }
         }
+        return unwrapped;
+      } catch (err) {
+        console.warn("API getPayments failed, using local fallback:", err);
+        const local = getLocalFallback<Payment[]>('payments', []);
+        return { data: local, total: local.length, totalAmount: local.reduce((s, p) => s + Number(p.amount), 0) };
       }
-      return unwrapped;
-    } catch (err) {
-      console.warn("API getPayments failed, using local fallback:", err);
-      const local = getLocalFallback<Payment[]>('payments', []);
-      return { data: local, total: local.length, totalAmount: local.reduce((s, p) => s + Number(p.amount), 0) };
-    }
+    });
   }
 
   async getPaymentById(id: number) {

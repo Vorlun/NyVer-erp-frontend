@@ -1,13 +1,32 @@
 import axios, { type InternalAxiosRequestConfig } from 'axios';
 
-export const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+function resolveApiBaseUrl(): string {
+  if (import.meta.env.VITE_API_URL) {
+    return import.meta.env.VITE_API_URL;
+  }
+
+  if (typeof window !== 'undefined') {
+    const host = window.location.hostname;
+    if (host === 'localhost' || host === '127.0.0.1') {
+      return 'http://localhost:3000/api';
+    }
+    if (host === '170.168.6.161') {
+      return 'http://170.168.6.161:3000/api';
+    }
+  }
+
+  // Standart VPS Backend manzili (production)
+  return 'http://170.168.6.161:3000/api';
+}
+
+export const API_BASE_URL = resolveApiBaseUrl();
 
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 10000,
+  timeout: 15000,
 });
 
 // JWT Interceptor for Request

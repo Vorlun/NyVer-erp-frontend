@@ -942,7 +942,10 @@ async function markPaymentAsPaid(p: Payment) {
   }
 }
 
+let isDashboardLoading = false;
 async function loadDashboardData() {
+  if (isDashboardLoading) return;
+  isDashboardLoading = true;
   loading.value = true;
   try {
     const [usersRes, groupsRes, coursesRes, paymentsRes, lessonsRes] = await Promise.allSettled([
@@ -1000,6 +1003,7 @@ async function loadDashboardData() {
   } catch (err) {
     console.error('Failed to load dashboard data:', err);
   } finally {
+    isDashboardLoading = false;
     loading.value = false;
   }
 }
