@@ -1,0 +1,17 @@
+{
+  "version": 2,
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "http://170.168.6.161:3000/api/:path*"
+    },
+    {
+      "source": "/uploads/:path*",
+      "destination": "http://170.168.6.161:3000/uploads/:path*"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}
