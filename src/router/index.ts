@@ -21,6 +21,7 @@ const AdminGroups = () => import('../views/admin/GroupsView.vue');
 const AdminStudents = () => import('../views/admin/StudentsView.vue');
 const AdminManagement = () => import('../views/admin/ManagementView.vue');
 const AdminUsers = () => import('../views/admin/UsersView.vue');
+const AdminCoinsManagement = () => import('../views/admin/CoinsManagementView.vue');
 const AdminBroadcast = () => import('../views/admin/BroadcastView.vue');
 const AdminPrizes = () => import('../views/admin/PrizesView.vue');
 const AdminProfile = () => import('../views/admin/ProfileView.vue');
@@ -28,6 +29,7 @@ const AdminPayments = () => import('../views/admin/PaymentsView.vue');
 const AdminUserDetail = () => import('../views/admin/UserDetailView.vue');
 const AdminGroupDetail = () => import('../views/admin/GroupDetailView.vue');
 const AdminContacts = () => import('../views/admin/ContactsView.vue');
+const AdminStudentCoinDetail = () => import('../views/admin/StudentCoinDetailView.vue');
 
 // Lazy-loaded Teacher Views
 const TeacherDashboard = () => import('../views/teacher/DashboardView.vue');
@@ -156,12 +158,22 @@ const routes: RouteRecordRaw[] = [
       {
         path: 'coins',
         name: 'admin-management-coins',
-        component: AdminUsers,
+        component: AdminCoinsManagement,
+      },
+      {
+        path: 'coins/:id',
+        name: 'admin-management-coin-detail',
+        component: AdminStudentCoinDetail,
       },
       {
         path: 'broadcast',
         name: 'admin-management-broadcast',
         component: AdminBroadcast,
+      },
+      {
+        path: 'teachers',
+        name: 'admin-management-teachers',
+        component: AdminTeachers,
       },
     ],
   },

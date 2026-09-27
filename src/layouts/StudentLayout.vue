@@ -2,6 +2,7 @@
 import { ref, onMounted, onUnmounted } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { useAuthStore } from '../stores/auth';
+import { useNotificationsStore } from '../stores/notifications';
 import {
   Home,
   CreditCard,
@@ -32,6 +33,7 @@ import nyverLogo from '@/assets/logo.png';
 const router = useRouter();
 const route = useRoute();
 const authStore = useAuthStore();
+const notificationsStore = useNotificationsStore();
 
 const mobileSidebarOpen = ref(false);
 const sidebarCollapsed = ref(false);
@@ -136,10 +138,12 @@ function onDocumentClick(e: MouseEvent) {
 
 onMounted(() => {
   document.addEventListener('click', onDocumentClick);
+  notificationsStore.connectWebSocket('STUDENT', authStore.user?.id);
 });
 
 onUnmounted(() => {
   document.removeEventListener('click', onDocumentClick);
+  notificationsStore.disconnectWebSocket();
 });
 </script>
 
@@ -434,15 +438,54 @@ onUnmounted(() => {
               title="Bildirishnomalar"
             >
               <Bell class="h-5 w-5" />
-              <span class="absolute top-2 right-2 h-2.5 w-2.5 rounded-full bg-amber-500 ring-2 ring-white"></span>
+              <span
+                v-if="notificationsStore.studentUnreadCount > 0"
+                class="absolute top-1.5 right-1.5 h-4 min-w-4 px-1 rounded-full bg-amber-500 text-white text-[9px] font-black flex items-center justify-center ring-2 ring-white"
+              >
+                {{ notificationsStore.studentUnreadCount }}
+              </span>
             </button>
 
+            <!-- Notification Dropdown -->
             <div
               v-if="showNotificationMenu"
-              class="absolute right-0 mt-2 w-80 bg-white rounded-2xl shadow-xl border border-slate-200/90 p-4 z-50 text-left text-sm"
+              class="absolute right-0 mt-2 w-80 sm:w-88 bg-white rounded-2xl shadow-xl border border-slate-200/90 p-4 z-50 text-left text-xs space-y-3"
             >
-              <span class="font-bold text-slate-800 block mb-1">Bildirishnomalar</span>
-              <p class="text-slate-500 text-xs">Sizga yangi uy vazifasi berildi (Muddati: Ertaga)</p>
+              <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                <span class="font-bold text-slate-900 text-sm">Bildirishnomalar</span>
+                <button
+                  v-if="notificationsStore.studentUnreadCount > 0"
+                  @click="notificationsStore.markAllAsRead"
+                  type="button"
+                  class="text-[11px] text-[#6D28D9] font-bold hover:underline cursor-pointer"
+                >
+                  O'qilgan deb belgilash
+                </button>
+              </div>
+
+              <div class="max-h-72 overflow-y-auto space-y-2 pr-0.5">
+                <div
+                  v-if="notificationsStore.studentNotifications.length === 0"
+                  class="py-6 text-center text-slate-400"
+                >
+                  Yangi bildirishnomalar yo'q
+                </div>
+                <div
+                  v-for="n in notificationsStore.studentNotifications.slice(0, 6)"
+                  :key="n.id"
+                  @click="notificationsStore.markAsRead(n.id)"
+                  class="p-2.5 rounded-xl border transition cursor-pointer"
+                  :class="!n.read ? 'bg-amber-50/60 border-amber-200' : 'bg-white border-slate-100'"
+                >
+                  <div class="flex items-center justify-between mb-1">
+                    <span class="font-bold text-slate-900 truncate">{{ n.title }}</span>
+                    <span class="text-[10px] text-slate-400 font-mono">
+                      {{ new Date(n.createdAt).toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit' }) }}
+                    </span>
+                  </div>
+                  <p class="text-slate-600 line-clamp-2 leading-relaxed">{{ n.message }}</p>
+                </div>
+              </div>
             </div>
           </div>
 

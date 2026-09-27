@@ -4,12 +4,9 @@ import { useRouter } from 'vue-router';
 import { useAuthStore } from '../../stores/auth';
 import { erpService } from '../../api/erpService';
 import type { User, Group, Course, Payment } from '../../types';
-import Badge from '../../components/ui/Badge.vue';
 import Modal from '../../components/ui/Modal.vue';
 import {
   Users,
-  UserPlus,
-  FolderPlus,
   GraduationCap,
   CreditCard,
   AlertTriangle,
@@ -18,20 +15,14 @@ import {
   ChevronDown,
   Plus,
   Clock,
-  TrendingUp,
   CheckCircle2,
   Check,
   BookOpen,
-  Send,
   UserCheck,
   ChevronRight,
   ChevronLeft,
-  FileText,
   X,
   PieChart,
-  Search,
-  Eye,
-  LogIn,
   Building2,
   Calendar,
 } from 'lucide-vue-next';
@@ -135,10 +126,10 @@ const statDebtorsCount = computed(() => {
   return set.size;
 });
 
-// Collapsible Dashboard Sections (3 ta bo'lim ochilib-yopilishi)
-const isRecentPaymentsOpen = ref(true);
-const isFinancialAnalyticsOpen = ref(true);
-const isScheduleOpen = ref(true);
+// Collapsible Dashboard Sections (default yopiq)
+const isRecentPaymentsOpen = ref(false);
+const isFinancialAnalyticsOpen = ref(false);
+const isScheduleOpen = ref(false);
 
 // Recent payments filter: 'ALL' | 'PENDING'
 const recentPaymentsFilter = ref<'ALL' | 'PENDING'>('ALL');
@@ -197,122 +188,7 @@ const totalPendingAll = computed(() => {
     .reduce((sum, p) => sum + Number(p.amount), 0);
 });
 
-// User Search & 360 Inspector State
-const userSearchQuery = ref('');
-const userRoleFilter = ref<'ALL' | 'STUDENT' | 'TEACHER'>('ALL');
-const showUserInspectModal = ref(false);
-const inspectedUser = ref<User | null>(null);
 
-const filteredRecentUsers = computed(() => {
-  let list = [...users.value];
-  if (userRoleFilter.value !== 'ALL') {
-    list = list.filter((u) => u.role === userRoleFilter.value);
-  }
-  if (userSearchQuery.value.trim()) {
-    const q = userSearchQuery.value.toLowerCase().trim();
-    list = list.filter((u) => {
-      const name = `${u.firstName || ''} ${u.lastName || ''}`.toLowerCase();
-      const phone = (u.phone || '').toLowerCase();
-      const email = (u.email || '').toLowerCase();
-      return name.includes(q) || phone.includes(q) || email.includes(q);
-    });
-  }
-  return list.slice(0, 8);
-});
-
-function openUserInspectModal(u: User) {
-  inspectedUser.value = u;
-  showUserInspectModal.value = true;
-}
-
-// Inspected user related records
-const inspectedUserPayments = computed(() => {
-  if (!inspectedUser.value) return [];
-  return payments.value
-    .filter((p) => p.studentId === inspectedUser.value?.id)
-    .sort((a, b) => new Date(b.paidForDate).getTime() - new Date(a.paidForDate).getTime());
-});
-
-const inspectedUserTotalPaid = computed(() => {
-  return inspectedUserPayments.value
-    .filter((p) => p.status === 'PAID')
-    .reduce((sum, p) => sum + Number(p.amount), 0);
-});
-
-const inspectedUserTotalPending = computed(() => {
-  return inspectedUserPayments.value
-    .filter((p) => p.status === 'PENDING')
-    .reduce((sum, p) => sum + Number(p.amount), 0);
-});
-
-const inspectedUserGroups = computed(() => {
-  if (!inspectedUser.value) return [];
-  const u = inspectedUser.value as any;
-  if (u.role === 'STUDENT' && Array.isArray(u.studentEnrollments)) {
-    return u.studentEnrollments.map((e: any) => e.group).filter(Boolean);
-  }
-  if (u.role === 'TEACHER' && Array.isArray(u.teachingGroups)) {
-    return u.teachingGroups.map((tg: any) => tg.group || tg).filter(Boolean);
-  }
-  if (u.role === 'STUDENT') {
-    return groups.value.filter((g: any) =>
-      g.students?.some((s: any) => s.studentId === u.id || s.id === u.id)
-    );
-  }
-  if (u.role === 'TEACHER') {
-    return groups.value.filter((g: any) =>
-      g.teachers?.some((t: any) => t.teacherId === u.id || t.id === u.id) || g.teacherId === u.id
-    );
-  }
-  return [];
-});
-
-function handleImpersonate(u: User) {
-  authStore.impersonateUser(u);
-  showUserInspectModal.value = false;
-  showToast(`"${u.firstName} ${u.lastName}" akkauntiga kirdingiz!`);
-  if (u.role === 'STUDENT') {
-    router.push('/student/dashboard');
-  } else if (u.role === 'TEACHER') {
-    router.push('/teacher/dashboard');
-  } else {
-    router.push('/dashboard');
-  }
-}
-
-// Enriched groups for cards
-const enrichedGroups = computed(() => {
-  return groups.value.slice(0, 6).map((g) => {
-    const studentCount = (g as any).students?.length || 0;
-    const maxStudents = g.maxStudents || 16;
-    const fillPercent = Math.min(100, Math.round((studentCount / maxStudents) * 100));
-    const teacherName = (g as any).teachers?.[0]?.teacher
-      ? `${(g as any).teachers[0].teacher.firstName} ${(g as any).teachers[0].teacher.lastName}`
-      : 'Tayinlanmagan';
-
-    // Clean room name: removes bulky parenthetical notes (e.g. "Xona #102 (Backend...)" -> "102-xona")
-    const rawRoom = g.room?.name || '';
-    let cleanRoom = '101-xona';
-    if (rawRoom) {
-      const stripped = rawRoom.replace(/\(.*?\)/g, '').trim();
-      const matchNum = stripped.match(/\d+/);
-      if (matchNum) {
-        cleanRoom = `${matchNum[0]}-xona`;
-      } else {
-        cleanRoom = stripped.length > 14 ? stripped.substring(0, 12) + '...' : stripped;
-      }
-    }
-
-    return {
-      ...g,
-      studentCount,
-      maxStudents,
-      fillPercent,
-      teacherName,
-      cleanRoom,
-    };
-  });
-});
 
 // Metric Cards Calculations (100% REAL from API)
 const totalStudents = computed(() => {
@@ -828,37 +704,6 @@ function getTeacherNameForGroup(g: any): string {
   return 'Oybek Yusupov';
 }
 
-function formatGroupDaysLabel(weekDays?: string[]): { text: string; sub: string; isOdd: boolean; isEven: boolean } {
-  if (!weekDays || weekDays.length === 0) {
-    return { text: 'Du • Chor • Ju', sub: 'Toq kunlar', isOdd: true, isEven: false };
-  }
-  const isMWF = weekDays.includes('MONDAY') && weekDays.includes('WEDNESDAY') && weekDays.includes('FRIDAY');
-  const isTTS = weekDays.includes('TUESDAY') && weekDays.includes('THURSDAY') && weekDays.includes('SATURDAY');
-  if (isMWF) {
-    return { text: 'Du • Chor • Ju', sub: 'Toq kunlar', isOdd: true, isEven: false };
-  }
-  if (isTTS) {
-    return { text: 'Se • Pay • Shan', sub: 'Juft kunlar', isOdd: false, isEven: true };
-  }
-  if (weekDays.length >= 6) {
-    return { text: 'Du – Shan', sub: 'Har kuni', isOdd: false, isEven: false };
-  }
-  const shortMap: Record<string, string> = {
-    MONDAY: 'Du',
-    TUESDAY: 'Se',
-    WEDNESDAY: 'Chor',
-    THURSDAY: 'Pay',
-    FRIDAY: 'Ju',
-    SATURDAY: 'Shan',
-    SUNDAY: 'Yak',
-  };
-  return {
-    text: weekDays.map((d) => shortMap[d] || d).join(' • '),
-    sub: 'Hafta kunlari',
-    isOdd: false,
-    isEven: false,
-  };
-}
 
 // Students list for Quick Add Payment modal
 const studentUsers = computed(() => users.value.filter((u) => u.role === 'STUDENT'));
@@ -1045,285 +890,176 @@ onUnmounted(() => {
 
 <template>
   <div class="space-y-6">
-    <!-- Header with Welcome Greeting -->
-    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-      <div>
-        <h1 class="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900">
-          Salom, {{ authStore.user?.firstName ? `${authStore.user.firstName} ${authStore.user.lastName || ''}` : 'Abduxoshim Sultonqulov' }}!
-        </h1>
-        <p class="text-xs sm:text-sm text-slate-500 mt-1">NyVer Academy platformasiga xush kelibsiz!</p>
-      </div>
-
-      <div class="flex items-center gap-2 flex-wrap">
-        <!-- "+ Qo'shish" Quick Actions Dropdown -->
-        <div class="relative quick-add-dropdown">
-          <button
-            @click.stop="showQuickAddMenu = !showQuickAddMenu"
-            type="button"
-            id="quick-add-btn"
-            class="h-11 px-4.5 rounded-2xl bg-[#6D28D9] hover:bg-[#5B21B6] active:bg-[#4C1D95] text-white text-sm font-bold flex items-center gap-2 transition-all cursor-pointer shadow-sm shrink-0"
-          >
-            <Plus class="h-4.5 w-4.5" />
-            <span>Qo'shish</span>
-            <ChevronDown class="h-3.5 w-3.5 opacity-80 transition-transform duration-200" :class="{ 'rotate-180': showQuickAddMenu }" />
-          </button>
-
-          <!-- Quick Actions Popover Menu -->
-          <div
-            v-if="showQuickAddMenu"
-            class="absolute right-0 sm:left-0 sm:right-auto mt-2 w-64 bg-white rounded-2xl shadow-xl border border-slate-200/90 py-2 z-50 text-left"
-          >
-            <div class="px-3.5 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100">
-              Tezkor amallar
-            </div>
-
-            <button
-              @click="router.push('/dashboard/students?action=create'); showQuickAddMenu = false;"
-              class="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-violet-50 hover:text-violet-700 transition cursor-pointer"
-            >
-              <UserPlus class="h-4.5 w-4.5 text-[#6D28D9]" />
-              <span>Talaba qo'shish</span>
-            </button>
-
-            <button
-              @click="router.push('/dashboard/groups?action=create'); showQuickAddMenu = false;"
-              class="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-violet-50 hover:text-violet-700 transition cursor-pointer"
-            >
-              <FolderPlus class="h-4.5 w-4.5 text-[#6D28D9]" />
-              <span>Guruh ochish</span>
-            </button>
-
-            <button
-              @click="router.push('/dashboard/teachers?action=create'); showQuickAddMenu = false;"
-              class="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-violet-50 hover:text-violet-700 transition cursor-pointer"
-            >
-              <UserCheck class="h-4.5 w-4.5 text-emerald-600" />
-              <span>O'qituvchi qo'shish</span>
-            </button>
-
-            <button
-              @click="openCreatePaymentModal(); showQuickAddMenu = false;"
-              class="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-violet-50 hover:text-violet-700 transition cursor-pointer"
-            >
-              <CreditCard class="h-4.5 w-4.5 text-emerald-600" />
-              <span>To'lov qabul qilish</span>
-            </button>
-
-            <button
-              @click="router.push('/management/course'); showQuickAddMenu = false;"
-              class="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-violet-50 hover:text-violet-700 transition cursor-pointer"
-            >
-              <BookOpen class="h-4.5 w-4.5 text-amber-600" />
-              <span>Kurs yaratish</span>
-            </button>
-
-            <button
-              @click="router.push('/management/broadcast'); showQuickAddMenu = false;"
-              class="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-violet-50 hover:text-violet-700 transition cursor-pointer"
-            >
-              <Send class="h-4.5 w-4.5 text-blue-600" />
-              <span>SMS / Xabar yuborish</span>
-            </button>
-          </div>
-        </div>
-
-        <button
-          @click="openCreatePaymentModal()"
-          class="h-11 inline-flex items-center gap-2 px-4 rounded-2xl bg-white border border-slate-200/60 text-slate-700 hover:bg-slate-50 hover:text-slate-900 font-bold text-sm transition-all shadow-sm cursor-pointer"
-        >
-          <CreditCard class="h-4.5 w-4.5 text-slate-500" />
-          <span class="hidden sm:inline">To'lov Qabul Qilish</span>
-          <span class="sm:hidden">To'lov</span>
-        </button>
-      </div>
+    <!-- Header with Welcome Greeting (Matching screenshot) -->
+    <div>
+      <h1 class="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900">
+        Salom, {{ authStore.user?.firstName ? `${authStore.user.firstName} ${authStore.user.lastName || ''}` : 'Abduxoshim Sultonqulov' }}!
+      </h1>
+      <p class="text-xs sm:text-sm text-slate-400 mt-1">Nyver platformasiga xush kelibsiz!</p>
     </div>
 
-    <!-- Metric Cards Header & Period Toggle -->
-    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-      <div>
-        <h2 class="text-xs font-bold uppercase tracking-wider text-slate-400">Asosiy ko'rsatkichlar</h2>
-      </div>
-      <div class="inline-flex items-center bg-slate-100 p-0.5 rounded-xl text-xs font-medium self-start sm:self-auto">
-        <button
-          @click="statPeriod = 'THIS_MONTH'"
-          type="button"
-          class="px-3 py-1 rounded-lg transition-all cursor-pointer"
-          :class="statPeriod === 'THIS_MONTH' ? 'bg-white text-slate-900 shadow-2xs font-bold' : 'text-slate-500 hover:text-slate-800'"
-        >
-          Bu oy
-        </button>
-        <button
-          @click="statPeriod = 'THIS_YEAR'"
-          type="button"
-          class="px-3 py-1 rounded-lg transition-all cursor-pointer"
-          :class="statPeriod === 'THIS_YEAR' ? 'bg-white text-slate-900 shadow-2xs font-bold' : 'text-slate-500 hover:text-slate-800'"
-        >
-          2026-yil
-        </button>
-        <button
-          @click="statPeriod = 'ALL'"
-          type="button"
-          class="px-3 py-1 rounded-lg transition-all cursor-pointer"
-          :class="statPeriod === 'ALL' ? 'bg-white text-slate-900 shadow-2xs font-bold' : 'text-slate-500 hover:text-slate-800'"
-        >
-          Barchasi
-        </button>
-      </div>
-    </div>
-
-    <!-- 6 Metric Cards (Clean & Minimalist - 2-Rasm Uslubida) -->
-    <div class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3.5">
+    <!-- 6 Metric Cards (Large & Styled - Matching user brand design) -->
+    <div class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-4 sm:gap-5">
       <!-- 1. Faol talabalar -->
       <div
         @click="router.push('/dashboard/students')"
-        class="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200/70 hover:border-violet-300 hover:shadow-xs transition-all cursor-pointer flex flex-col items-center justify-center text-center group shadow-2xs"
+        class="bg-white rounded-3xl py-7 sm:py-8 px-4 sm:px-5 border border-slate-200/80 hover:border-[#6D28D9]/50 hover:shadow-lg hover:-translate-y-1 transition-all duration-200 cursor-pointer flex flex-col items-center justify-center text-center group shadow-xs"
       >
-        <div class="h-9 w-9 rounded-xl bg-violet-50 text-[#6D28D9] flex items-center justify-center mb-2.5 group-hover:scale-105 transition-transform">
-          <GraduationCap class="h-5 w-5" />
+        <div class="w-14 h-14 rounded-2xl bg-violet-50 text-[#6D28D9] flex items-center justify-center mb-3.5 group-hover:bg-[#6D28D9] group-hover:text-white group-hover:scale-105 transition-all duration-200 shadow-2xs">
+          <GraduationCap class="h-7 w-7 transition-transform duration-200" />
         </div>
-        <span class="text-xs font-medium text-slate-500">Faol talabalar</span>
-        <div class="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 mt-1.5">{{ totalStudents }}</div>
+        <span class="text-sm font-bold text-slate-500 group-hover:text-slate-800 transition-colors tracking-tight">Faol talabalar</span>
+        <div class="text-3xl sm:text-4xl font-black tracking-tight text-slate-900 font-mono mt-2">{{ totalStudents }}</div>
       </div>
 
       <!-- 2. Guruhlar -->
       <div
         @click="router.push('/dashboard/groups')"
-        class="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200/70 hover:border-violet-300 hover:shadow-xs transition-all cursor-pointer flex flex-col items-center justify-center text-center group shadow-2xs"
+        class="bg-white rounded-3xl py-7 sm:py-8 px-4 sm:px-5 border border-slate-200/80 hover:border-[#6D28D9]/50 hover:shadow-lg hover:-translate-y-1 transition-all duration-200 cursor-pointer flex flex-col items-center justify-center text-center group shadow-xs"
       >
-        <div class="h-9 w-9 rounded-xl bg-violet-50 text-[#6D28D9] flex items-center justify-center mb-2.5 group-hover:scale-105 transition-transform">
-          <Users class="h-5 w-5" />
+        <div class="w-14 h-14 rounded-2xl bg-violet-50 text-[#6D28D9] flex items-center justify-center mb-3.5 group-hover:bg-[#6D28D9] group-hover:text-white group-hover:scale-105 transition-all duration-200 shadow-2xs">
+          <Users class="h-7 w-7 transition-transform duration-200" />
         </div>
-        <span class="text-xs font-medium text-slate-500">Guruhlar</span>
-        <div class="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 mt-1.5">{{ totalGroups }}</div>
+        <span class="text-sm font-bold text-slate-500 group-hover:text-slate-800 transition-colors tracking-tight">Guruhlar</span>
+        <div class="text-3xl sm:text-4xl font-black tracking-tight text-slate-900 font-mono mt-2">{{ totalGroups }}</div>
       </div>
 
       <!-- 3. Joriy oy to'lovlar -->
       <div
         @click="router.push('/dashboard/payments')"
-        class="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200/70 hover:border-violet-300 hover:shadow-xs transition-all cursor-pointer flex flex-col items-center justify-center text-center group shadow-2xs"
+        class="bg-white rounded-3xl py-7 sm:py-8 px-4 sm:px-5 border border-slate-200/80 hover:border-[#6D28D9]/50 hover:shadow-lg hover:-translate-y-1 transition-all duration-200 cursor-pointer flex flex-col items-center justify-center text-center group shadow-xs"
         :title="`Tushum: ${formatMoney(statRevenue)}`"
       >
-        <div class="h-9 w-9 rounded-xl bg-violet-50 text-[#6D28D9] flex items-center justify-center mb-2.5 group-hover:scale-105 transition-transform">
-          <CreditCard class="h-5 w-5" />
+        <div class="w-14 h-14 rounded-2xl bg-violet-50 text-[#6D28D9] flex items-center justify-center mb-3.5 group-hover:bg-[#6D28D9] group-hover:text-white group-hover:scale-105 transition-all duration-200 shadow-2xs">
+          <CreditCard class="h-7 w-7 transition-transform duration-200" />
         </div>
-        <span class="text-xs font-medium text-slate-500">Joriy oy to'lovlar</span>
-        <div class="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 mt-1.5">{{ statPaidCount }}</div>
+        <span class="text-sm font-bold text-slate-500 group-hover:text-slate-800 transition-colors tracking-tight">Joriy oy to'lovlar</span>
+        <div class="text-3xl sm:text-4xl font-black tracking-tight text-slate-900 font-mono mt-2">{{ statPaidCount }}</div>
       </div>
 
       <!-- 4. Qarzdorlar -->
       <div
         @click="router.push('/dashboard/payments?status=PENDING')"
-        class="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200/70 hover:border-violet-300 hover:shadow-xs transition-all cursor-pointer flex flex-col items-center justify-center text-center group shadow-2xs"
+        class="bg-white rounded-3xl py-7 sm:py-8 px-4 sm:px-5 border border-slate-200/80 hover:border-[#6D28D9]/50 hover:shadow-lg hover:-translate-y-1 transition-all duration-200 cursor-pointer flex flex-col items-center justify-center text-center group shadow-xs"
         :title="`Kutilayotgan qarzdorlik: ${formatMoney(statPending)} (${statPendingCount} ta to'lov)`"
       >
-        <div class="h-9 w-9 rounded-xl bg-violet-50 text-[#6D28D9] flex items-center justify-center mb-2.5 group-hover:scale-105 transition-transform">
-          <AlertTriangle class="h-5 w-5" />
+        <div class="w-14 h-14 rounded-2xl bg-violet-50 text-[#6D28D9] flex items-center justify-center mb-3.5 group-hover:bg-[#6D28D9] group-hover:text-white group-hover:scale-105 transition-all duration-200 shadow-2xs">
+          <AlertTriangle class="h-7 w-7 transition-transform duration-200" />
         </div>
-        <span class="text-xs font-medium text-slate-500">Qarzdorlar</span>
-        <div class="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 mt-1.5">{{ statDebtorsCount }}</div>
+        <span class="text-sm font-bold text-slate-500 group-hover:text-slate-800 transition-colors tracking-tight">Qarzdorlar</span>
+        <div class="text-3xl sm:text-4xl font-black tracking-tight text-slate-900 font-mono mt-2">{{ statDebtorsCount }}</div>
       </div>
 
       <!-- 5. Muzlatilganlar -->
       <div
         @click="router.push('/dashboard/students?status=FROZEN')"
-        class="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200/70 hover:border-violet-300 hover:shadow-xs transition-all cursor-pointer flex flex-col items-center justify-center text-center group shadow-2xs"
+        class="bg-white rounded-3xl py-7 sm:py-8 px-4 sm:px-5 border border-slate-200/80 hover:border-[#6D28D9]/50 hover:shadow-lg hover:-translate-y-1 transition-all duration-200 cursor-pointer flex flex-col items-center justify-center text-center group shadow-xs"
       >
-        <div class="h-9 w-9 rounded-xl bg-violet-50 text-[#6D28D9] flex items-center justify-center mb-2.5 group-hover:scale-105 transition-transform">
-          <Snowflake class="h-5 w-5" />
+        <div class="w-14 h-14 rounded-2xl bg-violet-50 text-[#6D28D9] flex items-center justify-center mb-3.5 group-hover:bg-[#6D28D9] group-hover:text-white group-hover:scale-105 transition-all duration-200 shadow-2xs">
+          <Snowflake class="h-7 w-7 transition-transform duration-200" />
         </div>
-        <span class="text-xs font-medium text-slate-500">Muzlatilganlar</span>
-        <div class="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 mt-1.5">{{ frozenCount }}</div>
+        <span class="text-sm font-bold text-slate-500 group-hover:text-slate-800 transition-colors tracking-tight">Muzlatilganlar</span>
+        <div class="text-3xl sm:text-4xl font-black tracking-tight text-slate-900 font-mono mt-2">{{ frozenCount }}</div>
       </div>
 
       <!-- 6. Arxivdagilar -->
       <div
         @click="router.push('/dashboard/students?status=ARCHIVED')"
-        class="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200/70 hover:border-violet-300 hover:shadow-xs transition-all cursor-pointer flex flex-col items-center justify-center text-center group shadow-2xs"
+        class="bg-white rounded-3xl py-7 sm:py-8 px-4 sm:px-5 border border-slate-200/80 hover:border-[#6D28D9]/50 hover:shadow-lg hover:-translate-y-1 transition-all duration-200 cursor-pointer flex flex-col items-center justify-center text-center group shadow-xs"
       >
-        <div class="h-9 w-9 rounded-xl bg-violet-50 text-[#6D28D9] flex items-center justify-center mb-2.5 group-hover:scale-105 transition-transform">
-          <Archive class="h-5 w-5" />
+        <div class="w-14 h-14 rounded-2xl bg-violet-50 text-[#6D28D9] flex items-center justify-center mb-3.5 group-hover:bg-[#6D28D9] group-hover:text-white group-hover:scale-105 transition-all duration-200 shadow-2xs">
+          <Archive class="h-7 w-7 transition-transform duration-200" />
         </div>
-        <span class="text-xs font-medium text-slate-500">Arxivdagilar</span>
-        <div class="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 mt-1.5">{{ archivedCount }}</div>
+        <span class="text-sm font-bold text-slate-500 group-hover:text-slate-800 transition-colors tracking-tight">Arxivdagilar</span>
+        <div class="text-3xl sm:text-4xl font-black tracking-tight text-slate-900 font-mono mt-2">{{ archivedCount }}</div>
       </div>
     </div>
 
-    <!-- Enterprise Cards: Always-Open Data Sections -->
-    <div class="space-y-6">
+    <!-- Enterprise Accordion Sections (Matching user brand style: Clean rounded cards with prominent header) -->
+    <div class="space-y-4">
 
-      <!-- ===== CARD 1: So'nggi To'lovlar ===== -->
-      <div class="bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-2xs">
+      <!-- ===== CARD 1: Joriy oy uchun to'lovlar ===== -->
+      <div class="bg-white rounded-3xl border border-slate-200/80 overflow-hidden shadow-xs transition-all hover:border-violet-300">
         <!-- Card Header with Collapse Toggle -->
         <div
           @click="isRecentPaymentsOpen = !isRecentPaymentsOpen"
-          class="px-5 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 cursor-pointer select-none hover:bg-slate-50/50 transition-colors"
+          class="px-6 sm:px-7 py-5 flex items-center justify-between cursor-pointer select-none hover:bg-slate-50/70 transition-colors group"
         >
-          <div class="flex items-center gap-2.5">
-            <div class="h-8 w-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold">
-              <CreditCard class="h-4 w-4" />
+          <div class="flex items-center gap-3.5">
+            <div class="h-11 w-11 rounded-2xl bg-violet-50 text-[#6D28D9] flex items-center justify-center shrink-0 group-hover:bg-[#6D28D9] group-hover:text-white transition-all shadow-2xs">
+              <CreditCard class="h-5 w-5" />
             </div>
             <div>
-              <div class="flex items-center gap-2">
-                <h2 class="text-sm font-bold text-slate-900 leading-none">Joriy oy uchun to'lovlar</h2>
-                <span class="text-[10px] font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
-                  Oxirgi {{ recentPayments.length }} ta
-                </span>
-              </div>
-              <p class="text-[11px] text-slate-400 mt-0.5">Monitoring va kutilayotgan to'lovlarni tasdiqlash</p>
+              <h2 class="text-base sm:text-lg font-black text-slate-900 leading-tight">Joriy oy uchun to'lovlar</h2>
+              <p class="text-xs font-medium text-slate-400 mt-0.5">Oxirgi tranzaksiyalar va to'lovlar monitoringi</p>
             </div>
           </div>
-
-          <div class="flex items-center gap-2.5">
-            <!-- Filter Chips: Barchasi | Kutilmoqda -->
-            <div @click.stop class="inline-flex items-center bg-slate-100 p-0.5 rounded-xl text-xs font-medium">
-              <button
-                @click="recentPaymentsFilter = 'ALL'"
-                type="button"
-                class="px-2.5 py-1 rounded-lg transition cursor-pointer"
-                :class="recentPaymentsFilter === 'ALL' ? 'bg-white text-slate-900 shadow-2xs font-bold' : 'text-slate-500 hover:text-slate-800'"
-              >
-                Barchasi ({{ payments.length }})
-              </button>
-              <button
-                @click="recentPaymentsFilter = 'PENDING'"
-                type="button"
-                class="px-2.5 py-1 rounded-lg transition cursor-pointer flex items-center gap-1.5"
-                :class="recentPaymentsFilter === 'PENDING' ? 'bg-white text-amber-700 shadow-2xs font-bold' : 'text-slate-500 hover:text-amber-700'"
-              >
-                <span>Kutilmoqda</span>
-                <span
-                  v-if="pendingPaymentsCount > 0"
-                  class="h-4 px-1.5 rounded-full text-[10px] font-bold flex items-center justify-center"
-                  :class="recentPaymentsFilter === 'PENDING' ? 'bg-amber-100 text-amber-900' : 'bg-amber-100 text-amber-800'"
-                >
-                  {{ pendingPaymentsCount }}
-                </span>
-              </button>
+          <div class="flex items-center gap-3">
+            <span class="hidden sm:inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-violet-50 text-[#6D28D9] border border-violet-100">
+              {{ recentPayments.length }} ta to'lov
+            </span>
+            <div
+              class="h-9 w-9 rounded-xl bg-slate-100 flex items-center justify-center text-slate-500 group-hover:bg-[#6D28D9] group-hover:text-white transition-all shadow-2xs"
+            >
+              <ChevronDown
+                class="h-4.5 w-4.5 transition-transform duration-200"
+                :class="{ 'rotate-180': isRecentPaymentsOpen }"
+              />
             </div>
-
-            <router-link
-              @click.stop
-              to="/dashboard/payments"
-              class="inline-flex items-center gap-1 text-xs font-semibold text-indigo-600 hover:text-indigo-700 transition px-2.5 py-1.5 rounded-lg hover:bg-indigo-50"
-            >
-              <span>Barcha to'lovlar</span>
-              <ChevronRight class="h-3.5 w-3.5" />
-            </router-link>
-
-            <!-- Collapsible Chevron Button -->
-            <button
-              @click.stop="isRecentPaymentsOpen = !isRecentPaymentsOpen"
-              type="button"
-              class="p-1 rounded-lg hover:bg-slate-200/60 text-slate-400 hover:text-slate-700 transition cursor-pointer"
-              title="Bo'limni ochish / yopish"
-            >
-              <ChevronDown class="h-4 w-4 transition-transform duration-200" :class="{ '-rotate-90': !isRecentPaymentsOpen }" />
-            </button>
           </div>
         </div>
 
         <!-- Collapsible Content -->
-        <div v-show="isRecentPaymentsOpen">
+        <div v-show="isRecentPaymentsOpen" class="border-t border-slate-100">
+          <div class="px-6 py-3 bg-slate-50/50 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3">
+            <div class="flex items-center gap-2">
+              <span class="text-xs font-semibold text-slate-500">Oxirgi {{ recentPayments.length }} ta to'lov</span>
+            </div>
+            <div class="flex items-center gap-2.5">
+              <div class="inline-flex items-center bg-white p-0.5 rounded-xl text-xs font-medium border border-slate-200/80 shadow-2xs">
+                <button
+                  @click="recentPaymentsFilter = 'ALL'"
+                  type="button"
+                  class="px-2.5 py-1 rounded-lg transition cursor-pointer"
+                  :class="recentPaymentsFilter === 'ALL' ? 'bg-[#6D28D9] text-white shadow-2xs font-bold' : 'text-slate-500 hover:text-slate-800'"
+                >
+                  Barchasi ({{ payments.length }})
+                </button>
+                <button
+                  @click="recentPaymentsFilter = 'PENDING'"
+                  type="button"
+                  class="px-2.5 py-1 rounded-lg transition cursor-pointer flex items-center gap-1.5"
+                  :class="recentPaymentsFilter === 'PENDING' ? 'bg-amber-500 text-white shadow-2xs font-bold' : 'text-slate-500 hover:text-amber-700'"
+                >
+                  <span>Kutilmoqda</span>
+                  <span
+                    v-if="pendingPaymentsCount > 0"
+                    class="h-4 px-1.5 rounded-full text-[10px] font-bold flex items-center justify-center"
+                    :class="recentPaymentsFilter === 'PENDING' ? 'bg-white/20 text-white' : 'bg-amber-100 text-amber-800'"
+                  >
+                    {{ pendingPaymentsCount }}
+                  </span>
+                </button>
+              </div>
+
+              <button
+                @click="openCreatePaymentModal()"
+                type="button"
+                class="inline-flex items-center gap-1 text-xs font-semibold bg-[#6D28D9] hover:bg-[#5B21B6] text-white px-3 py-1 rounded-lg shadow-2xs transition cursor-pointer"
+              >
+                <Plus class="h-3.5 w-3.5" />
+                <span>+ To'lov</span>
+              </button>
+
+              <router-link
+                to="/dashboard/payments"
+                class="inline-flex items-center gap-1 text-xs font-semibold text-[#6D28D9] hover:text-[#5B21B6] transition px-2.5 py-1 rounded-lg hover:bg-violet-50"
+              >
+                <span>Barcha to'lovlar</span>
+                <ChevronRight class="h-3.5 w-3.5" />
+              </router-link>
+            </div>
+          </div>
           <!-- Flat Minimalist Table -->
           <div v-if="recentPayments.length === 0" class="py-12 text-center text-xs text-slate-400">
             Hozircha to'lovlar mavjud emas.
@@ -1486,49 +1222,38 @@ onUnmounted(() => {
 
 
       <!-- ===== CARD 2: Yillik Foyda & Moliya ===== -->
-      <div class="bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-2xs">
+      <div class="bg-white rounded-3xl border border-slate-200/80 overflow-hidden shadow-xs transition-all hover:border-violet-300">
         <!-- Card Header with Collapse Toggle -->
         <div
           @click="isFinancialAnalyticsOpen = !isFinancialAnalyticsOpen"
-          class="px-5 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 cursor-pointer select-none hover:bg-slate-50/50 transition-colors"
+          class="px-6 sm:px-7 py-5 flex items-center justify-between cursor-pointer select-none hover:bg-slate-50/70 transition-colors group"
         >
-          <div class="flex items-center gap-2.5">
-            <div class="h-8 w-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold">
-              <TrendingUp class="h-4 w-4" />
+          <div class="flex items-center gap-3.5">
+            <div class="h-11 w-11 rounded-2xl bg-violet-50 text-[#6D28D9] flex items-center justify-center shrink-0 group-hover:bg-[#6D28D9] group-hover:text-white transition-all shadow-2xs">
+              <PieChart class="h-5 w-5" />
             </div>
             <div>
-              <h2 class="text-sm font-bold text-slate-900 leading-none">Yillik Foyda</h2>
-              <p class="text-[11px] text-slate-400 mt-0.5">Tushum dinamikasi va to'lov usullari taqsimoti</p>
+              <h2 class="text-base sm:text-lg font-black text-slate-900 leading-tight">Yillik Foyda</h2>
+              <p class="text-xs font-medium text-slate-400 mt-0.5">Moliyaviy tahlil, to'lov usullari va daromad dinamikasi</p>
             </div>
           </div>
-          <div class="flex items-center gap-2.5">
-            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200/80 shadow-2xs">
-              <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-              Jami: {{ formatMoney(totalRevenueAll) }}
+          <div class="flex items-center gap-3">
+            <span class="hidden sm:inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-100">
+              {{ formatMoney(totalRevenueAll) }}
             </span>
-            <router-link
-              @click.stop
-              to="/dashboard/payments"
-              class="inline-flex items-center gap-1 text-xs font-semibold text-slate-500 hover:text-slate-800 transition px-2 py-1 rounded-lg hover:bg-slate-50"
+            <div
+              class="h-9 w-9 rounded-xl bg-slate-100 flex items-center justify-center text-slate-500 group-hover:bg-[#6D28D9] group-hover:text-white transition-all shadow-2xs"
             >
-              <span>Batafsil</span>
-              <ChevronRight class="h-3.5 w-3.5" />
-            </router-link>
-
-            <!-- Collapsible Chevron Button -->
-            <button
-              @click.stop="isFinancialAnalyticsOpen = !isFinancialAnalyticsOpen"
-              type="button"
-              class="p-1 rounded-lg hover:bg-slate-200/60 text-slate-400 hover:text-slate-700 transition cursor-pointer"
-              title="Bo'limni ochish / yopish"
-            >
-              <ChevronDown class="h-4 w-4 transition-transform duration-200" :class="{ '-rotate-90': !isFinancialAnalyticsOpen }" />
-            </button>
+              <ChevronDown
+                class="h-4.5 w-4.5 transition-transform duration-200"
+                :class="{ 'rotate-180': isFinancialAnalyticsOpen }"
+              />
+            </div>
           </div>
         </div>
 
         <!-- Body: Collapsible Surface -->
-        <div v-show="isFinancialAnalyticsOpen" class="p-5 space-y-4">
+        <div v-show="isFinancialAnalyticsOpen" class="border-t border-slate-100 p-5 space-y-4">
           <!-- 1. Integrated 3-Stat Metric Strip -->
           <div class="grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-slate-100 bg-slate-50/70 rounded-xl p-3 border border-slate-200/60">
             <div class="px-3 py-1">
@@ -1593,7 +1318,7 @@ onUnmounted(() => {
                         @mouseleave="activeHoverMethod = null"
                       />
                     </svg>
-                    <div class="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none px-3">
+                    <div class="absolute inset-0 flex flex-col items-center justify-center text-center select-text cursor-default px-3 pointer-events-auto">
                       <span class="text-[10px] sm:text-[11px] font-semibold uppercase tracking-wider text-slate-400">
                         {{ activeHoverMethod ? paymentMethodsBreakdown.find(m => m.key === activeHoverMethod)?.label : 'Jami Ulush' }}
                       </span>
@@ -1607,7 +1332,7 @@ onUnmounted(() => {
                   </div>
 
                   <!-- Summa diagramdan pastda (aniq, qulay va sig'adi) -->
-                  <div class="mt-2.5 w-full max-w-[230px] text-center bg-slate-50/90 border border-slate-200/80 rounded-xl py-2 px-3 shadow-2xs">
+                  <div class="mt-2.5 w-full max-w-57.5 text-center bg-slate-50/90 border border-slate-200/80 rounded-xl py-2 px-3 shadow-2xs">
                     <div class="text-[10px] uppercase font-semibold text-slate-500 tracking-wider truncate">
                       {{ activeHoverMethod ? (paymentMethodsBreakdown.find(m => m.key === activeHoverMethod)?.label + ' summasi') : 'Jami Tushum Summasi' }}
                     </div>
@@ -1702,12 +1427,18 @@ onUnmounted(() => {
                   :key="item.key"
                   class="flex-1 flex flex-col items-center h-full justify-end group/bar relative z-10 cursor-pointer"
                 >
-                  <!-- Tooltip on hover when sum > 0 -->
+                  <!-- Tooltip on hover when sum > 0 (Cursor can enter and select/copy data) -->
                   <div
                     v-if="item.sum > 0"
-                    class="opacity-0 group-hover/bar:opacity-100 transition-all duration-200 absolute bottom-full mb-2 bg-slate-900 text-white text-[11px] font-semibold py-1 px-2.5 rounded-lg shadow-lg pointer-events-none whitespace-nowrap z-30"
+                    class="opacity-0 group-hover/bar:opacity-100 transition-all duration-150 absolute bottom-full pb-2 z-30 pointer-events-none group-hover/bar:pointer-events-auto"
                   >
-                    {{ item.label }}: {{ formatMoney(item.sum) }} <span v-if="item.count > 0">• {{ item.count }} ta</span>
+                    <div
+                      class="bg-slate-900 text-white text-[11px] font-semibold py-1.5 px-3 rounded-xl shadow-xl whitespace-nowrap select-text cursor-text flex items-center gap-1.5 border border-slate-700/50"
+                    >
+                      <span>{{ item.label }}:</span>
+                      <span class="font-bold text-violet-300 font-mono">{{ formatMoney(item.sum) }}</span>
+                      <span v-if="item.count > 0" class="text-slate-300">• {{ item.count }} ta</span>
+                    </div>
                   </div>
 
                   <!-- Amount label on top (Aniq va ravshan ko'rinadi) -->
@@ -1758,32 +1489,39 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <!-- ===== CARD 3: Dars Jadvali (Reference Style: Top Lessons + Study Month Calendar Chips) ===== -->
-      <div class="bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-2xs">
+      <!-- ===== CARD 3: Dars jadvali ===== -->
+      <div class="bg-white rounded-3xl border border-slate-200/80 overflow-hidden shadow-xs transition-all hover:border-violet-300">
         <!-- Card Header -->
         <div
           @click="isScheduleOpen = !isScheduleOpen"
-          class="px-6 sm:px-8 pt-6 pb-4 flex items-center justify-between cursor-pointer select-none hover:bg-slate-50/40 transition-colors"
+          class="px-6 sm:px-7 py-5 flex items-center justify-between cursor-pointer select-none hover:bg-slate-50/70 transition-colors group"
         >
-          <div class="flex items-center gap-3">
-            <h2 class="text-base sm:text-lg font-bold text-slate-900 leading-none">Dars jadvali</h2>
-            <span v-if="selectedDayChip" class="text-xs font-semibold text-blue-600 bg-blue-50 px-2.5 py-0.5 rounded-full border border-blue-100">
-              {{ selectedDayChip.monthShort }} {{ selectedDayChip.dayNumber }} kuni
-            </span>
+          <div class="flex items-center gap-3.5">
+            <div class="h-11 w-11 rounded-2xl bg-violet-50 text-[#6D28D9] flex items-center justify-center shrink-0 group-hover:bg-[#6D28D9] group-hover:text-white transition-all shadow-2xs">
+              <Calendar class="h-5 w-5" />
+            </div>
+            <div>
+              <h2 class="text-base sm:text-lg font-black text-slate-900 leading-tight">Dars jadvali</h2>
+              <p class="text-xs font-medium text-slate-400 mt-0.5">O'quv oyi kunlari bo'yicha interaktiv darslar jadvali</p>
+            </div>
           </div>
-
-          <button
-            @click.stop="isScheduleOpen = !isScheduleOpen"
-            type="button"
-            class="p-1 rounded-lg text-slate-400 hover:text-slate-700 transition cursor-pointer"
-            title="Bo'limni ochish / yopish"
-          >
-            <ChevronDown class="h-4 w-4 transition-transform duration-200" :class="{ '-rotate-90': !isScheduleOpen }" />
-          </button>
+          <div class="flex items-center gap-3">
+            <span class="hidden sm:inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-violet-50 text-[#6D28D9] border border-violet-100">
+              {{ currentMonthDisplayName }}
+            </span>
+            <div
+              class="h-9 w-9 rounded-xl bg-slate-100 flex items-center justify-center text-slate-500 group-hover:bg-[#6D28D9] group-hover:text-white transition-all shadow-2xs"
+            >
+              <ChevronDown
+                class="h-4.5 w-4.5 transition-transform duration-200"
+                :class="{ 'rotate-180': isScheduleOpen }"
+              />
+            </div>
+          </div>
         </div>
 
         <!-- Collapsible Content -->
-        <div v-show="isScheduleOpen" class="px-6 sm:px-8 pb-8 pt-1 space-y-6">
+        <div v-show="isScheduleOpen" class="border-t border-slate-100 px-6 sm:px-8 pb-8 pt-4 space-y-6">
           <!-- 1. YUQORIDA: Kalendar va O'quv oyi (Study Month & Day Chips at TOP) -->
           <div class="space-y-4">
             <!-- Navigation Header -->
@@ -1800,7 +1538,7 @@ onUnmounted(() => {
 
                 <span class="text-sm sm:text-base font-bold text-slate-900 select-none flex items-center gap-2">
                   <span>{{ currentMonthDisplayName }}</span>
-                  <span v-if="isCurrentActualMonth" class="text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200/80 px-2 py-0.5 rounded-full uppercase tracking-wider">
+                  <span v-if="isCurrentActualMonth" class="text-[10px] font-bold text-[#6D28D9] bg-violet-50 border border-violet-200/80 px-2 py-0.5 rounded-full uppercase tracking-wider">
                     Joriy oy
                   </span>
                 </span>
@@ -1818,7 +1556,7 @@ onUnmounted(() => {
                   v-if="!isCurrentActualMonth"
                   @click="goToTodayMonth"
                   type="button"
-                  class="text-[11px] font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-2.5 py-0.5 rounded-lg transition cursor-pointer"
+                  class="text-[11px] font-semibold text-[#6D28D9] bg-violet-50 hover:bg-violet-100 border border-violet-200 px-2.5 py-0.5 rounded-lg transition cursor-pointer"
                   title="Joriy oy va bugungi kunga qaytish"
                 >
                   Bugunga qaytish
@@ -1831,7 +1569,7 @@ onUnmounted(() => {
                   v-if="selectedDayChip"
                   @click="clearCalendarSelection"
                   type="button"
-                  class="text-xs text-slate-500 hover:text-blue-600 font-medium px-2.5 py-1 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+                  class="text-xs text-slate-500 hover:text-[#6D28D9] font-medium px-2.5 py-1 rounded-lg hover:bg-slate-100 transition cursor-pointer"
                 >
                   Barcha darslarni ko'rish
                 </button>
@@ -1850,9 +1588,9 @@ onUnmounted(() => {
                   selectedDayChip?.dateKey === d.dateKey
                     ? d.isWeekend
                       ? 'bg-rose-600 text-white font-bold shadow-md scale-105 ring-2 ring-rose-400'
-                      : 'bg-blue-600 text-white font-bold shadow-md scale-105 ring-2 ring-blue-400'
+                      : 'bg-[#6D28D9] text-white font-bold shadow-md scale-105 ring-2 ring-violet-400'
                     : d.isToday
-                    ? 'bg-indigo-50 text-indigo-700 ring-2 ring-indigo-400 font-bold'
+                    ? 'bg-violet-50 text-[#6D28D9] ring-2 ring-violet-400 font-bold'
                     : d.isWeekend
                     ? 'bg-rose-50/90 hover:bg-rose-100 text-rose-600 border border-rose-200/90 font-bold shadow-2xs'
                     : 'bg-slate-100 hover:bg-slate-200/80 text-slate-700'
@@ -1866,7 +1604,7 @@ onUnmounted(() => {
                     selectedDayChip?.dateKey === d.dateKey
                       ? 'text-white/95'
                       : d.isToday
-                      ? 'text-indigo-600 font-bold'
+                      ? 'text-[#6D28D9] font-bold'
                       : d.isWeekend
                       ? 'text-rose-600 font-bold'
                       : 'text-slate-400'
@@ -1881,7 +1619,7 @@ onUnmounted(() => {
                     selectedDayChip?.dateKey === d.dateKey
                       ? 'text-white'
                       : d.isToday
-                      ? 'text-indigo-950 font-black'
+                      ? 'text-[#6D28D9] font-black'
                       : d.isWeekend
                       ? 'text-rose-700 font-black'
                       : 'text-slate-800'
@@ -1899,8 +1637,8 @@ onUnmounted(() => {
                       : d.isWeekend
                       ? 'bg-rose-500 ring-1 ring-white'
                       : d.isToday
-                      ? 'bg-indigo-500'
-                      : 'bg-blue-500'
+                      ? 'bg-[#6D28D9]'
+                      : 'bg-violet-400'
                   "
                 ></span>
               </button>
@@ -1921,7 +1659,7 @@ onUnmounted(() => {
                 </h3>
                 <span
                   class="text-xs px-2.5 py-0.5 rounded-full font-bold border"
-                  :class="selectedDayChip?.isWeekend ? 'bg-rose-50 text-rose-700 border-rose-200' : 'bg-blue-50 text-blue-700 border-blue-100'"
+                  :class="selectedDayChip?.isWeekend ? 'bg-rose-50 text-rose-700 border-rose-200' : 'bg-violet-50 text-[#6D28D9] border-violet-100'"
                 >
                   {{ currentDayLessons.length }} ta dars
                 </span>
@@ -2043,318 +1781,6 @@ onUnmounted(() => {
     </div>
 
 
-
-    <!-- Bottom Tables Grid: Users 360 & Active Groups -->
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 pt-2">
-      <!-- 1. Recent Users & 360 Management Card -->
-      <div class="rounded-2xl bg-white p-5 sm:p-6 shadow-2xs border border-slate-200/80 flex flex-col justify-between space-y-4">
-        <div>
-          <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-slate-100">
-            <div class="flex items-center gap-2.5">
-              <div class="h-8 w-8 rounded-xl bg-violet-50 flex items-center justify-center text-[#6D28D9]">
-                <Users class="h-4 w-4" />
-              </div>
-              <div>
-                <h3 class="font-bold text-slate-900 text-base leading-tight">Foydalanuvchilar Nazorati</h3>
-                <p class="text-[11px] text-slate-400 mt-0.5">Qidiruv, to'lov qabul qilish va tezkor kirish</p>
-              </div>
-            </div>
-
-            <!-- Role Filter Pills -->
-            <div class="inline-flex items-center bg-slate-100 p-0.5 rounded-xl text-xs font-medium">
-              <button
-                @click="userRoleFilter = 'ALL'"
-                type="button"
-                class="px-2.5 py-1 rounded-lg transition-all cursor-pointer"
-                :class="userRoleFilter === 'ALL' ? 'bg-white text-slate-900 shadow-2xs font-bold' : 'text-slate-500 hover:text-slate-800'"
-              >
-                Barchasi
-              </button>
-              <button
-                @click="userRoleFilter = 'STUDENT'"
-                type="button"
-                class="px-2.5 py-1 rounded-lg transition-all cursor-pointer"
-                :class="userRoleFilter === 'STUDENT' ? 'bg-white text-slate-900 shadow-2xs font-bold' : 'text-slate-500 hover:text-slate-800'"
-              >
-                Talabalar
-              </button>
-              <button
-                @click="userRoleFilter = 'TEACHER'"
-                type="button"
-                class="px-2.5 py-1 rounded-lg transition-all cursor-pointer"
-                :class="userRoleFilter === 'TEACHER' ? 'bg-white text-slate-900 shadow-2xs font-bold' : 'text-slate-500 hover:text-slate-800'"
-              >
-                O'qituvchilar
-              </button>
-            </div>
-          </div>
-
-          <!-- Instant Search Bar -->
-          <div class="relative mt-3">
-            <Search class="h-4 w-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-            <input
-              v-model="userSearchQuery"
-              type="text"
-              placeholder="Ism, telefon raqami yoki email bo'yicha qidirish..."
-              class="w-full pl-9 pr-3.5 py-2 text-xs bg-slate-50 hover:bg-slate-100/70 focus:bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-600 transition-all font-medium"
-            />
-          </div>
-        </div>
-
-        <!-- Users List (Minimalist & Senior Polish) -->
-        <div class="space-y-1.5 max-h-[380px] overflow-y-auto pr-0.5 divide-y divide-slate-50">
-          <div
-            v-for="u in filteredRecentUsers"
-            :key="u.id"
-            @click="openUserInspectModal(u)"
-            class="py-2.5 px-3 rounded-xl hover:bg-slate-50/90 transition-all flex items-center justify-between gap-3 group cursor-pointer border border-transparent hover:border-slate-200/60"
-          >
-            <!-- User Avatar & Identity -->
-            <div class="flex items-center gap-3 min-w-0">
-              <div
-                class="h-9 w-9 rounded-xl flex items-center justify-center font-bold text-xs shrink-0 relative shadow-2xs"
-                :class="
-                  u.role === 'TEACHER'
-                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/60'
-                    : u.role === 'ADMIN' || u.role === 'SUPERADMIN'
-                    ? 'bg-violet-50 text-violet-700 border border-violet-200/60'
-                    : 'bg-blue-50 text-blue-700 border border-blue-200/60'
-                "
-              >
-                {{ u.firstName?.charAt(0) || 'U' }}{{ u.lastName?.charAt(0) || '' }}
-                <span
-                  class="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-white"
-                  :class="u.status === 'ACTIVE' ? 'bg-emerald-500' : u.status === 'FROZEN' ? 'bg-cyan-500' : 'bg-slate-400'"
-                ></span>
-              </div>
-              <div class="min-w-0">
-                <div class="flex items-center gap-2">
-                  <p class="text-xs sm:text-sm font-bold text-slate-900 group-hover:text-indigo-600 transition truncate leading-tight">
-                    {{ u.firstName }} {{ u.lastName }}
-                  </p>
-                  <span
-                    class="px-1.5 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider shrink-0"
-                    :class="
-                      u.role === 'TEACHER'
-                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/70'
-                        : u.role === 'ADMIN' || u.role === 'SUPERADMIN'
-                        ? 'bg-violet-50 text-violet-700 border border-violet-200/70'
-                        : 'bg-blue-50 text-blue-700 border border-blue-200/70'
-                    "
-                  >
-                    {{ u.role === 'TEACHER' ? 'O\'qituvchi' : u.role === 'STUDENT' ? 'Talaba' : 'Admin' }}
-                  </span>
-                  <span
-                    v-if="u.role === 'STUDENT' && u.coins !== undefined"
-                    class="px-1.5 py-0.5 rounded-md text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200/80 shrink-0"
-                  >
-                    🪙 {{ u.coins }}
-                  </span>
-                </div>
-                <div class="flex items-center gap-2 mt-0.5 text-[11px] text-slate-400">
-                  <span class="font-mono text-slate-500">{{ u.phone }}</span>
-                  <span v-if="u.email" class="text-slate-300">•</span>
-                  <span v-if="u.email" class="truncate max-w-36">{{ u.email }}</span>
-                </div>
-              </div>
-            </div>
-
-            <!-- Only Essential Admin Action Methods -->
-            <div class="flex items-center gap-2 shrink-0" @click.stop>
-              <!-- 1. If student: Quick Payment Trigger -->
-              <button
-                v-if="u.role === 'STUDENT'"
-                @click="openCreatePaymentModal(u.id)"
-                type="button"
-                class="px-2.5 py-1 text-xs font-semibold bg-emerald-50 hover:bg-emerald-600 text-emerald-700 hover:text-white rounded-lg border border-emerald-200/80 transition-all cursor-pointer shadow-2xs active:scale-95 flex items-center gap-1"
-                title="To'lov qabul qilish"
-              >
-                <Plus class="h-3 w-3" />
-                <span>To'lov</span>
-              </button>
-
-              <!-- 2. Quick Impersonate (Login As) -->
-              <button
-                v-if="u.role !== 'SUPERADMIN'"
-                @click="handleImpersonate(u)"
-                type="button"
-                class="px-2.5 py-1 text-xs font-semibold bg-slate-100 hover:bg-slate-800 text-slate-700 hover:text-white rounded-lg transition-all cursor-pointer shadow-2xs active:scale-95 flex items-center gap-1"
-                title="Akkaunt nomidan tizimga kirish"
-              >
-                <LogIn class="h-3 w-3" />
-                <span class="hidden sm:inline">Kirish</span>
-              </button>
-
-              <!-- 3. Profile Link -->
-              <router-link
-                :to="'/dashboard/users/' + u.id"
-                class="h-7 w-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition cursor-pointer"
-                title="To'liq 360° profil sahifasi"
-              >
-                <Eye class="h-3.5 w-3.5" />
-              </router-link>
-            </div>
-          </div>
-
-          <div v-if="filteredRecentUsers.length === 0" class="py-8 text-center text-xs text-slate-400">
-            Foydalanuvchilar topilmadi.
-          </div>
-        </div>
-
-        <div class="pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-400">
-          <span>Jami: <strong class="text-slate-700 font-semibold">{{ users.length }} ta foydalanuvchi</strong></span>
-          <router-link to="/dashboard/users" class="font-semibold text-indigo-600 hover:text-indigo-700 flex items-center gap-1 transition">
-            <span>Barcha foydalanuvchilar</span>
-            <ChevronRight class="h-3.5 w-3.5" />
-          </router-link>
-        </div>
-      </div>
-
-      <!-- 2. Active Groups & Capacity Card (Minimalist Clean Design) -->
-      <div class="rounded-2xl bg-white p-5 sm:p-6 shadow-2xs border border-slate-200/80 flex flex-col justify-between space-y-4">
-        <!-- Card Section Header -->
-        <div class="flex items-center justify-between pb-3 border-b border-slate-100">
-          <div class="flex items-center gap-2.5">
-            <div class="h-8 w-8 rounded-xl bg-violet-50 flex items-center justify-center text-[#6D28D9]">
-              <FolderPlus class="h-4 w-4" />
-            </div>
-            <div>
-              <h3 class="font-bold text-slate-900 text-base leading-tight">Mavjud Guruhlar & Sig'im</h3>
-              <p class="text-[11px] text-slate-400 mt-0.5">Faol guruhlar va to'lganlik darajasi</p>
-            </div>
-          </div>
-          <div class="flex items-center gap-2">
-            <button
-              @click="router.push('/dashboard/groups?action=create')"
-              type="button"
-              class="text-xs font-semibold text-[#6D28D9] hover:text-white bg-violet-50 hover:bg-[#6D28D9] px-2.5 py-1.5 rounded-xl transition-all flex items-center gap-1 cursor-pointer"
-              title="Yangi guruh ochish"
-            >
-              <Plus class="h-3.5 w-3.5" />
-              <span class="hidden sm:inline">Guruh ochish</span>
-            </button>
-            <router-link
-              to="/dashboard/groups"
-              class="text-xs font-semibold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200/70 px-3 py-1.5 rounded-xl transition-colors"
-            >
-              Barchasi ({{ groups.length }})
-            </router-link>
-          </div>
-        </div>
-
-        <!-- Groups Cards Grid (Minimalism & Clean Architecture) -->
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5 max-h-100 overflow-y-auto pr-0.5">
-          <div
-            v-for="g in enrichedGroups"
-            :key="g.id"
-            @click="router.push(`/dashboard/groups/${g.id}`)"
-            class="p-4 rounded-2xl bg-white hover:bg-slate-50/60 border border-slate-200/80 hover:border-violet-300 hover:shadow-xs transition-all duration-200 flex flex-col justify-between space-y-3 cursor-pointer group shadow-2xs"
-          >
-            <!-- Top: Initials Logo + Group Name & Course + Days Pill -->
-            <div class="flex items-start justify-between gap-2.5">
-              <div class="flex items-center gap-2.5 min-w-0">
-                <div class="h-9 w-9 rounded-xl bg-violet-50 text-[#6D28D9] group-hover:bg-[#6D28D9] group-hover:text-white flex items-center justify-center font-bold text-xs shrink-0 transition-colors border border-violet-100 shadow-2xs">
-                  {{ g.name.substring(0, 2).toUpperCase() }}
-                </div>
-                <div class="min-w-0">
-                  <h4 class="text-xs sm:text-sm font-bold text-slate-900 group-hover:text-[#6D28D9] transition truncate leading-tight">
-                    {{ g.name }}
-                  </h4>
-                  <p class="text-[11px] text-slate-400 truncate mt-0.5">
-                    {{ g.course?.name || 'Asosiy kurs' }}
-                  </p>
-                </div>
-              </div>
-
-              <!-- Top Right: Minimal Days Pill -->
-              <span
-                class="text-[10px] font-semibold px-2 py-0.5 rounded-md shrink-0"
-                :class="formatGroupDaysLabel(g.weekDays).isOdd ? 'text-violet-700 bg-violet-50 border border-violet-100/80' : 'text-indigo-700 bg-indigo-50 border border-indigo-100/80'"
-              >
-                {{ formatGroupDaysLabel(g.weekDays).text }}
-              </span>
-            </div>
-
-            <!-- Middle: Clean Minimal Details (Airy, No heavy nested boxes) -->
-            <div class="space-y-1.5 pt-0.5 text-xs">
-              <!-- Row 1: Teacher & Room -->
-              <div class="flex items-center justify-between gap-2">
-                <div class="flex items-center gap-1.5 min-w-0">
-                  <UserCheck class="h-3.5 w-3.5 text-violet-500 shrink-0" />
-                  <span class="text-[11px] font-medium text-slate-700 truncate" :title="g.teacherName">
-                    {{ g.teacherName }}
-                  </span>
-                </div>
-                <div class="flex items-center gap-1 text-[11px] text-slate-500 shrink-0 font-medium">
-                  <Building2 class="h-3 w-3 text-slate-400" />
-                  <span>{{ g.cleanRoom }}</span>
-                </div>
-              </div>
-
-              <!-- Row 2: Time & Status -->
-              <div class="flex items-center justify-between gap-2 text-[11px] text-slate-400 font-mono">
-                <div class="flex items-center gap-1.5">
-                  <Clock class="h-3.5 w-3.5 text-slate-400 shrink-0" />
-                  <span>{{ g.startTime }} – {{ g.endTime }}</span>
-                </div>
-                <span class="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-600 font-sans">
-                  <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                  Faol
-                </span>
-              </div>
-            </div>
-
-            <!-- Bottom: Capacity & Minimal Progress Bar -->
-            <div class="pt-1">
-              <div class="flex items-center justify-between text-[11px] mb-1.5">
-                <span class="text-slate-400 font-medium">Sig'im</span>
-                <span class="font-mono text-slate-700 font-semibold text-[11px]">
-                  {{ g.studentCount }} / {{ g.maxStudents }}
-                  <span class="text-slate-400 font-normal">({{ g.fillPercent }}%)</span>
-                </span>
-              </div>
-              <div class="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                <div
-                  class="h-full rounded-full transition-all duration-500"
-                  :class="g.fillPercent >= 90 ? 'bg-amber-500' : 'bg-linear-to-r from-violet-500 to-[#6D28D9]'"
-                  :style="{ width: `${Math.max(4, g.fillPercent)}%` }"
-                ></div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Empty slot filler / Create new group card when odd number -->
-          <div
-            v-if="enrichedGroups.length % 2 === 1"
-            @click="router.push('/dashboard/groups?action=create')"
-            class="p-4 rounded-2xl border border-dashed border-slate-200 hover:border-violet-300 bg-slate-50/40 hover:bg-violet-50/20 transition-all duration-200 flex flex-col items-center justify-center text-center cursor-pointer group min-h-36"
-          >
-            <div class="h-8 w-8 rounded-xl bg-white text-[#6D28D9] flex items-center justify-center shadow-2xs group-hover:scale-105 transition-transform border border-slate-200/80">
-              <Plus class="h-4 w-4" />
-            </div>
-            <span class="text-xs font-bold text-slate-700 group-hover:text-[#6D28D9] mt-2 transition">
-              Yangi guruh ochish
-            </span>
-            <span class="text-[11px] text-slate-400 mt-0.5">
-              Yangi guruh va dars jadvali yaratish
-            </span>
-          </div>
-
-          <div v-if="enrichedGroups.length === 0" class="col-span-2 py-8 text-center text-xs text-slate-400">
-            Hozircha guruhlar mavjud emas.
-          </div>
-        </div>
-
-        <!-- Section Footer (Clean, Non-redundant) -->
-        <div class="pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-400">
-          <span>Jami: <strong class="text-slate-700 font-semibold">{{ totalGroups }} ta faol guruh</strong></span>
-          <router-link to="/dashboard/groups" class="font-semibold text-[#6D28D9] hover:text-[#5B21B6] flex items-center gap-1 transition">
-            <span>Guruhlar ro'yxati</span>
-            <ChevronRight class="h-3.5 w-3.5" />
-          </router-link>
-        </div>
-      </div>
-    </div>
 
     <!-- Quick Add Payment Modal -->
     <Modal
@@ -2493,174 +1919,7 @@ onUnmounted(() => {
 
 
 
-    <!-- User 360° Inspector Modal (Admin Quick Management & Impersonation) -->
-    <Modal
-      :show="showUserInspectModal"
-      title="Foydalanuvchi 360° Boshqaruv Profili"
-      @close="showUserInspectModal = false"
-    >
-      <div v-if="inspectedUser" class="space-y-4">
-        <!-- Top Profile Card -->
-        <div class="p-4 bg-linear-to-r from-violet-50 via-slate-50 to-white border border-violet-100 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div class="flex items-center gap-3">
-            <div
-              class="h-14 w-14 rounded-2xl flex items-center justify-center font-black text-lg text-white shadow-sm"
-              :class="
-                inspectedUser.role === 'TEACHER'
-                  ? 'bg-emerald-600'
-                  : inspectedUser.role === 'ADMIN' || inspectedUser.role === 'SUPERADMIN'
-                  ? 'bg-[#6D28D9]'
-                  : 'bg-amber-600'
-              "
-            >
-              {{ inspectedUser.firstName?.charAt(0) || 'U' }}{{ inspectedUser.lastName?.charAt(0) || '' }}
-            </div>
-            <div>
-              <div class="flex items-center gap-2">
-                <h4 class="text-base font-black text-slate-900 leading-tight">
-                  {{ inspectedUser.firstName }} {{ inspectedUser.lastName }}
-                </h4>
-                <Badge :variant="inspectedUser.role === 'TEACHER' ? 'success' : inspectedUser.role === 'STUDENT' ? 'warning' : 'info'">
-                  {{ inspectedUser.role }}
-                </Badge>
-              </div>
-              <p class="text-xs text-slate-500 font-mono mt-0.5">{{ inspectedUser.phone }}</p>
-              <p v-if="inspectedUser.email" class="text-xs text-slate-400">{{ inspectedUser.email }}</p>
-            </div>
-          </div>
 
-          <!-- Quick Impersonate & Action Buttons -->
-          <div class="flex items-center gap-2 flex-wrap">
-            <button
-              @click="handleImpersonate(inspectedUser)"
-              type="button"
-              class="px-4 py-2 text-xs font-black text-white bg-[#6D28D9] hover:bg-[#5B21B6] rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shadow-sm active:scale-95"
-              title="Ushbu foydalanuvchi akkaunti nomidan tizimga kirish"
-            >
-              <LogIn class="h-4 w-4" />
-              <span>Akkaunt nomidan kirish</span>
-            </button>
-            <button
-              v-if="inspectedUser.role === 'STUDENT'"
-              @click="openCreatePaymentModal(inspectedUser.id); showUserInspectModal = false;"
-              type="button"
-              class="px-3.5 py-2 text-xs font-bold text-emerald-700 bg-emerald-100 hover:bg-emerald-200 rounded-xl transition-colors cursor-pointer flex items-center gap-1.5"
-            >
-              <CreditCard class="h-3.5 w-3.5" />
-              <span>+ To'lov</span>
-            </button>
-          </div>
-        </div>
-
-        <!-- Student Financial Summary (if student) -->
-        <div v-if="inspectedUser.role === 'STUDENT'" class="grid grid-cols-2 gap-3">
-          <div class="p-3 bg-emerald-50/70 border border-emerald-100 rounded-xl">
-            <span class="text-[11px] font-bold text-emerald-700 uppercase tracking-wider block">Jami To'langan</span>
-            <span class="text-base font-black text-emerald-900 mt-0.5 block">{{ formatMoney(inspectedUserTotalPaid) }}</span>
-            <span class="text-[10px] text-emerald-600">{{ inspectedUserPayments.filter(p => p.status === 'PAID').length }} ta to'lov</span>
-          </div>
-          <div class="p-3 bg-amber-50/70 border border-amber-100 rounded-xl">
-            <span class="text-[11px] font-bold text-amber-700 uppercase tracking-wider block">Kutilayotgan Qarz</span>
-            <span class="text-base font-black text-amber-900 mt-0.5 block">{{ formatMoney(inspectedUserTotalPending) }}</span>
-            <span class="text-[10px] text-amber-600">{{ inspectedUserPayments.filter(p => p.status === 'PENDING').length }} ta kutilmoqda</span>
-          </div>
-        </div>
-
-        <!-- Groups Section -->
-        <div class="space-y-2">
-          <div class="flex items-center justify-between">
-            <h5 class="text-xs font-bold uppercase tracking-wider text-slate-700">
-              {{ inspectedUser.role === 'TEACHER' ? 'O\'qitadigan guruhlari' : 'Biriktirilgan guruhlari' }}
-              ({{ inspectedUserGroups.length }})
-            </h5>
-          </div>
-
-          <div v-if="inspectedUserGroups.length === 0" class="p-4 text-center text-xs text-slate-400 bg-slate-50 rounded-xl border border-slate-100">
-            Biriktirilgan guruhlar mavjud emas.
-          </div>
-          <div v-else class="space-y-1.5 max-h-40 overflow-y-auto pr-1">
-            <div
-              v-for="grp in inspectedUserGroups"
-              :key="grp.id"
-              class="p-2.5 bg-slate-50 hover:bg-slate-100/70 rounded-xl border border-slate-100 flex items-center justify-between text-xs"
-            >
-              <div>
-                <span class="font-bold text-slate-800">{{ grp.name }}</span>
-                <span v-if="grp.course" class="text-slate-400 ml-1.5 font-medium">({{ grp.course?.name }})</span>
-              </div>
-              <div class="flex items-center gap-2">
-                <span class="text-[11px] font-mono text-slate-500">{{ grp.startTime }} - {{ grp.endTime }}</span>
-                <Badge :variant="grp.status === 'ACTIVE' ? 'success' : 'warning'">{{ grp.status }}</Badge>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Student Payments History (if student) -->
-        <div v-if="inspectedUser.role === 'STUDENT'" class="space-y-2">
-          <div class="flex items-center justify-between">
-            <h5 class="text-xs font-bold uppercase tracking-wider text-slate-700">To'lovlar Tarixi ({{ inspectedUserPayments.length }})</h5>
-            <button
-              @click="openCreatePaymentModal(inspectedUser.id); showUserInspectModal = false;"
-              type="button"
-              class="text-[11px] font-bold text-[#6D28D9] hover:underline cursor-pointer flex items-center gap-1"
-            >
-              <Plus class="h-3 w-3" />
-              <span>To'lov qo'shish</span>
-            </button>
-          </div>
-
-          <div v-if="inspectedUserPayments.length === 0" class="p-4 text-center text-xs text-slate-400 bg-slate-50 rounded-xl border border-slate-100">
-            Hozircha to'lovlar mavjud emas.
-          </div>
-          <div v-else class="space-y-1.5 max-h-48 overflow-y-auto pr-1">
-            <div
-              v-for="p in inspectedUserPayments"
-              :key="p.id"
-              class="p-2.5 rounded-xl border flex items-center justify-between text-xs transition-colors"
-              :class="p.status === 'PAID' ? 'bg-emerald-50/40 border-emerald-100' : 'bg-amber-50/40 border-amber-100'"
-            >
-              <div>
-                <span class="font-black text-slate-900">{{ formatMoney(p.amount) }}</span>
-                <span class="text-[10px] text-slate-500 ml-2 font-medium">{{ p.type }} • {{ formatDate(p.paidForDate) }}</span>
-                <p v-if="p.comment" class="text-[10px] text-slate-400 mt-0.5 truncate max-w-xs">{{ p.comment }}</p>
-              </div>
-              <div class="flex items-center gap-2">
-                <Badge :variant="p.status === 'PAID' ? 'success' : p.status === 'PENDING' ? 'warning' : 'danger'">
-                  {{ p.status === 'PAID' ? 'To\'langan' : 'Kutilmoqda' }}
-                </Badge>
-                <router-link
-                  :to="`/dashboard/payments?search=${encodeURIComponent(inspectedUser.phone || inspectedUser.firstName)}`"
-                  class="h-6 w-6 rounded-lg bg-white border border-slate-200 hover:bg-slate-50 flex items-center justify-center text-slate-600 transition-colors"
-                  title="To'lovlar bo'limida ko'rish"
-                >
-                  <FileText class="h-3 w-3" />
-                </router-link>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Modal Footer -->
-        <div class="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
-          <button
-            @click="showUserInspectModal = false"
-            type="button"
-            class="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
-          >
-            Yopish
-          </button>
-          <button
-            @click="handleImpersonate(inspectedUser)"
-            type="button"
-            class="px-4 py-2 text-xs font-bold text-white bg-[#6D28D9] hover:bg-[#5B21B6] rounded-xl transition-colors cursor-pointer flex items-center gap-1.5 shadow-sm"
-          >
-            <LogIn class="h-3.5 w-3.5" />
-            <span>Akkauntga o'tish</span>
-          </button>
-        </div>
-      </div>
-    </Modal>
 
     <!-- Floating Success Toast Notification -->
     <transition

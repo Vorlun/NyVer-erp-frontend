@@ -2,6 +2,7 @@
 import { ref, onMounted, onUnmounted } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { useAuthStore } from '../stores/auth';
+import { useNotificationsStore } from '../stores/notifications';
 import {
   Layers,
   CalendarCheck,
@@ -28,6 +29,7 @@ import nyverLogo from '@/assets/logo.png';
 const router = useRouter();
 const route = useRoute();
 const authStore = useAuthStore();
+const notificationsStore = useNotificationsStore();
 
 // Sidebar States
 const mobileSidebarOpen = ref(false);
@@ -58,10 +60,12 @@ function onDocumentClick(e: MouseEvent) {
 
 onMounted(() => {
   document.addEventListener('click', onDocumentClick);
+  notificationsStore.connectWebSocket('TEACHER', authStore.user?.id);
 });
 
 onUnmounted(() => {
   document.removeEventListener('click', onDocumentClick);
+  notificationsStore.disconnectWebSocket();
 });
 
 // Primary Navigation Items
@@ -186,7 +190,7 @@ function handleLogout() {
     <!-- Dark Backdrop for 2nd Sidebar Flyout Drawer -->
     <div
       v-if="submenuOpen"
-      class="fixed inset-0 bg-slate-900/40 z-30 transition-opacity backdrop-blur-2xs cursor-pointer"
+      class="fixed inset-0 bg-slate-900/40 z-40 transition-opacity backdrop-blur-xs cursor-pointer"
       @click="closeSubmenu"
     ></div>
 
@@ -195,15 +199,15 @@ function handleLogout() {
       class="hidden lg:flex select-none z-50 shrink-0 relative transition-all duration-300"
       :class="sidebarCollapsed ? 'w-20' : 'w-64'"
     >
-      <!-- 1. PRIMARY SIDEBAR -->
+      <!-- 1. PRIMARY SIDEBAR (Overflow visible so toggle button and tooltips render outside cleanly) -->
       <div
-        class="w-full bg-white border-r border-slate-200/80 rounded-tr-3xl rounded-br-3xl flex flex-col justify-between min-h-screen relative z-40 shadow-none transition-all duration-300"
+        class="w-full bg-white border-r border-slate-200/80 rounded-tr-3xl rounded-br-3xl flex flex-col justify-between min-h-screen relative z-40 shadow-none transition-all duration-300 overflow-visible"
       >
-        <!-- 50% Overlapping Collapse Toggle Button (Rounded square) -->
+        <!-- 50% Overlapping Collapse Toggle Button (Purple square button with white chevron) -->
         <button
           @click="toggleSidebarCollapse"
           type="button"
-          class="absolute -right-3.5 top-6 h-7.5 w-7.5 rounded-xl bg-white hover:bg-violet-50 text-[#6D28D9] hover:text-[#5B21B6] border border-slate-200/90 hover:border-violet-300 flex items-center justify-center shadow-xs cursor-pointer z-50 transition-all hover:scale-105 active:scale-95 shrink-0"
+          class="absolute -right-3.5 top-6 h-7.5 w-7.5 rounded-xl bg-[#6D28D9] hover:bg-[#5b21b6] text-white flex items-center justify-center shadow-md cursor-pointer z-50 transition-all hover:scale-105 active:scale-95 shrink-0 border-2 border-white"
           :title="sidebarCollapsed ? 'Sidebar ochish' : 'Sidebar yopish'"
         >
           <ChevronRight v-if="sidebarCollapsed" class="h-4 w-4" />
@@ -211,7 +215,7 @@ function handleLogout() {
         </button>
 
         <!-- Top Section: Logo & Nav -->
-        <div>
+        <div class="overflow-visible">
           <!-- Logo Header with inset bottom border line that does not reach the ends -->
           <div
             class="relative h-20 flex items-center transition-all duration-300"
@@ -258,9 +262,9 @@ function handleLogout() {
                 <span v-if="!sidebarCollapsed" class="truncate">{{ item.label }}</span>
               </router-link>
 
-              <!-- Pointer Arrow Tooltip appearing on the right with section name -->
+              <!-- Pointer Arrow Tooltip appearing on hover outside to the right -->
               <div
-                class="absolute left-full top-1/2 -translate-y-1/2 ml-3.5 px-3 py-1.5 bg-slate-900 text-white text-xs font-semibold rounded-xl shadow-xl whitespace-nowrap pointer-events-none opacity-0 group-hover:opacity-100 -translate-x-1.5 group-hover:translate-x-0 transition-all duration-150 z-50 flex items-center"
+                class="absolute left-full top-1/2 -translate-y-1/2 ml-3.5 px-3.5 py-2 bg-slate-900 text-white text-xs font-bold rounded-xl shadow-2xl whitespace-nowrap pointer-events-none opacity-0 group-hover:opacity-100 -translate-x-2 group-hover:translate-x-0 transition-all duration-200 z-100 flex items-center gap-1.5"
               >
                 <span class="absolute right-full top-1/2 -translate-y-1/2 -mr-px border-y-4 border-y-transparent border-r-6 border-r-slate-900"></span>
                 <span>{{ item.label }}</span>
@@ -284,9 +288,9 @@ function handleLogout() {
                 <span v-if="!sidebarCollapsed" class="truncate">Boshqarish</span>
               </button>
 
-              <!-- Pointer Arrow Tooltip for Boshqarish -->
+              <!-- Pointer Arrow Tooltip for Boshqarish on hover -->
               <div
-                class="absolute left-full top-1/2 -translate-y-1/2 ml-3.5 px-3 py-1.5 bg-slate-900 text-white text-xs font-semibold rounded-xl shadow-xl whitespace-nowrap pointer-events-none opacity-0 group-hover:opacity-100 -translate-x-1.5 group-hover:translate-x-0 transition-all duration-150 z-50 flex items-center"
+                class="absolute left-full top-1/2 -translate-y-1/2 ml-3.5 px-3.5 py-2 bg-slate-900 text-white text-xs font-bold rounded-xl shadow-2xl whitespace-nowrap pointer-events-none opacity-0 group-hover:opacity-100 -translate-x-2 group-hover:translate-x-0 transition-all duration-200 z-100 flex items-center gap-1.5"
               >
                 <span class="absolute right-full top-1/2 -translate-y-1/2 -mr-px border-y-4 border-y-transparent border-r-6 border-r-slate-900"></span>
                 <span>Boshqarish</span>
@@ -335,7 +339,7 @@ function handleLogout() {
       >
         <div
           v-if="submenuOpen"
-          class="absolute top-0 bottom-0 min-h-screen w-64 bg-white border-r border-slate-200/90 rounded-tr-3xl rounded-br-3xl flex flex-col z-10 shadow-none transition-[left] duration-300"
+          class="absolute top-0 bottom-0 min-h-screen w-64 bg-white border-r border-slate-200/90 rounded-tr-3xl rounded-br-3xl flex flex-col z-10 shadow-none transition-[left] duration-300 overflow-visible"
           :class="sidebarCollapsed ? 'left-20' : 'left-64'"
         >
           <!-- Submenu Header: Title "Menu" with inset border that does not reach the ends -->
@@ -345,7 +349,7 @@ function handleLogout() {
           </div>
 
           <!-- Submenu Items with matching styles, hovers, active, and tooltips -->
-          <div class="px-3.5 py-3 space-y-2 flex-1">
+          <div class="px-3.5 py-3 space-y-2 flex-1 overflow-visible">
             <div
               v-for="item in submenuItems"
               :key="item.id"
@@ -365,9 +369,9 @@ function handleLogout() {
                 <span class="truncate">{{ item.label }}</span>
               </button>
 
-              <!-- Pointer Tooltip on hover -->
+              <!-- Pointer Tooltip on hover (appears outside to the right) -->
               <div
-                class="absolute left-full top-1/2 -translate-y-1/2 ml-3.5 px-3 py-1.5 bg-slate-900 text-white text-xs font-semibold rounded-xl shadow-xl whitespace-nowrap pointer-events-none opacity-0 group-hover:opacity-100 -translate-x-1.5 group-hover:translate-x-0 transition-all duration-150 z-50 flex items-center"
+                class="absolute left-full top-1/2 -translate-y-1/2 ml-3.5 px-3.5 py-2 bg-slate-900 text-white text-xs font-bold rounded-xl shadow-2xl whitespace-nowrap pointer-events-none opacity-0 group-hover:opacity-100 -translate-x-2 group-hover:translate-x-0 transition-all duration-200 z-100 flex items-center gap-1.5"
               >
                 <span class="absolute right-full top-1/2 -translate-y-1/2 -mr-px border-y-4 border-y-transparent border-r-6 border-r-slate-900"></span>
                 <span>{{ item.label }}</span>
@@ -435,7 +439,7 @@ function handleLogout() {
     <div class="flex-1 flex flex-col min-w-0 min-h-screen overflow-y-auto">
       <!-- Top Header (Matching Image 3 - Enlarged) -->
       <header
-        class="h-17.5 bg-white border-b border-slate-200/80 px-4 sm:px-6 lg:px-8 flex items-center justify-between sticky top-0 z-30 shadow-2xs"
+        class="h-17.5 bg-white border-b border-slate-200/80 px-4 sm:px-6 lg:px-8 flex items-center justify-between sticky top-0 z-20 shadow-2xs"
       >
         <!-- LEFT: Mobile Menu + Calendar + "+ Qo'shish" + Search Bar -->
         <div class="flex items-center gap-3 sm:gap-3.5 flex-1 max-w-xl">
@@ -573,15 +577,54 @@ function handleLogout() {
               title="Bildirishnomalar"
             >
               <Bell class="h-5 w-5" />
-              <span class="absolute top-2 right-2 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-white"></span>
+              <span
+                v-if="notificationsStore.teacherUnreadCount > 0"
+                class="absolute top-1.5 right-1.5 h-4 min-w-4 px-1 rounded-full bg-rose-500 text-white text-[9px] font-black flex items-center justify-center ring-2 ring-white"
+              >
+                {{ notificationsStore.teacherUnreadCount }}
+              </span>
             </button>
 
+            <!-- Notification Dropdown -->
             <div
               v-if="showNotificationMenu"
-              class="absolute right-0 mt-2 w-80 bg-white rounded-2xl shadow-xl border border-slate-200/90 p-4 z-50 text-left text-sm"
+              class="absolute right-0 mt-2 w-80 sm:w-88 bg-white rounded-2xl shadow-xl border border-slate-200/90 p-4 z-50 text-left text-xs space-y-3"
             >
-              <span class="font-bold text-slate-800 block mb-1">Bildirishnomalar</span>
-              <p class="text-slate-500 text-xs">Yangi uy vazifasi topshirildi (2 ta tekshirish kutilmoqda)</p>
+              <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                <span class="font-bold text-slate-900 text-sm">Bildirishnomalar</span>
+                <button
+                  v-if="notificationsStore.teacherUnreadCount > 0"
+                  @click="notificationsStore.markAllAsRead"
+                  type="button"
+                  class="text-[11px] text-[#6D28D9] font-bold hover:underline cursor-pointer"
+                >
+                  O'qilgan deb belgilash
+                </button>
+              </div>
+
+              <div class="max-h-72 overflow-y-auto space-y-2 pr-0.5">
+                <div
+                  v-if="notificationsStore.teacherNotifications.length === 0"
+                  class="py-6 text-center text-slate-400"
+                >
+                  Yangi bildirishnomalar yo'q
+                </div>
+                <div
+                  v-for="n in notificationsStore.teacherNotifications.slice(0, 6)"
+                  :key="n.id"
+                  @click="notificationsStore.markAsRead(n.id)"
+                  class="p-2.5 rounded-xl border transition cursor-pointer"
+                  :class="!n.read ? 'bg-violet-50/60 border-violet-100' : 'bg-white border-slate-100'"
+                >
+                  <div class="flex items-center justify-between mb-1">
+                    <span class="font-bold text-slate-900 truncate">{{ n.title }}</span>
+                    <span class="text-[10px] text-slate-400 font-mono">
+                      {{ new Date(n.createdAt).toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit' }) }}
+                    </span>
+                  </div>
+                  <p class="text-slate-600 line-clamp-2 leading-relaxed">{{ n.message }}</p>
+                </div>
+              </div>
             </div>
           </div>
 
