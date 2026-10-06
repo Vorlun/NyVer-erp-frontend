@@ -42,13 +42,20 @@
           </svg>
         </div>
         <h2 class="sp-state-title">Parol o'rnatildi! 🎉</h2>
-        <p class="sp-state-desc">Parolingiz muvaffaqiyatli o'rnatildi. Endi tizimga kirishingiz mumkin.</p>
-        <a href="/login" class="sp-btn">Tizimga Kirish →</a>
+        <p class="sp-state-desc">
+          {{ isFirstLogin ? "Yangi shaxsiy parolingiz muvaffaqiyatli saqlandi. Endi talaba kabinetingizdan to'liq foydalanishingiz mumkin." : "Parolingiz muvaffaqiyatli o'rnatildi. Endi tizimga kirishingiz mumkin." }}
+        </p>
+        <router-link v-if="authStore.isAuthenticated" to="/student/dashboard" class="sp-btn">
+          Talaba Kabinetiga O'tish →
+        </router-link>
+        <a v-else href="/login" class="sp-btn">Tizimga Kirish →</a>
       </div>
 
       <div v-else-if="state === 'form'" class="sp-form-wrap">
-        <h2 class="sp-form-title">Parolni O'rnating</h2>
-        <p class="sp-form-desc">Akkauntingiz uchun yangi parol yarating. Kamida 6 ta belgi bo'lishi kerak.</p>
+        <h2 class="sp-form-title">{{ isFirstLogin ? "Yangi Shaxsiy Parol O'rnating" : "Parolni O'rnating" }}</h2>
+        <p class="sp-form-desc">
+          {{ isFirstLogin ? "Siz 1 martalik vaqtinchalik parol bilan kirdingiz. Xavfsizlik uchun yangi doimiy parolingizni belgilang." : "Akkauntingiz uchun yangi parol yarating. Kamida 6 ta belgi bo'lishi kerak." }}
+        </p>
 
         <form @submit.prevent="handleSubmit" class="sp-form" novalidate>
           <div class="sp-field">
@@ -119,11 +126,14 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
+import { useAuthStore } from '../../stores/auth';
+import { erpService } from '../../api/erpService';
 import axios from 'axios';
 
 type State = 'loading' | 'invalid' | 'form' | 'success';
 
 const route = useRoute();
+const authStore = useAuthStore();
 const state = ref<State>('loading');
 const token = ref('');
 const password = ref('');
@@ -133,6 +143,10 @@ const showConfirm = ref(false);
 const isSubmitting = ref(false);
 const apiError = ref('');
 const errors = ref<{ password?: string; confirm?: string }>({});
+
+const isFirstLogin = computed(() => {
+  return route.query.mode === 'first-login' || (authStore.isAuthenticated && !!authStore.user?.tempPassword);
+});
 
 // Password strength
 const strengthScore = computed(() => {
@@ -157,13 +171,18 @@ const strengthColor = computed(() => {
 
 onMounted(() => {
   const t = route.query.token as string;
-  if (!t) {
-    state.value = 'invalid';
+  if (t) {
+    token.value = t;
+    state.value = 'form';
     return;
   }
-  token.value = t;
-  // Simply show the form — actual token validity is checked on submit
-  state.value = 'form';
+  
+  if (isFirstLogin.value) {
+    state.value = 'form';
+    return;
+  }
+
+  state.value = 'invalid';
 });
 
 function validate() {
@@ -183,17 +202,25 @@ async function handleSubmit() {
 
   isSubmitting.value = true;
   try {
-    await axios.post(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/auth/set-password`, {
-      token: token.value,
-      newPassword: password.value,
-    });
+    if (token.value) {
+      await axios.post(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/auth/set-password`, {
+        token: token.value,
+        newPassword: password.value,
+      });
+    } else {
+      await erpService.changeTempPassword(password.value);
+      if (authStore.user) {
+        authStore.user.tempPassword = null;
+        localStorage.setItem('nyver_auth_user', JSON.stringify(authStore.user));
+      }
+    }
     state.value = 'success';
   } catch (err: any) {
     const msg = err?.response?.data?.message;
     apiError.value = Array.isArray(msg)
       ? msg.join(', ')
-      : (msg || 'Xatolik yuz berdi. Havola muddati o\'tgan bo\'lishi mumkin.');
-    if (apiError.value.includes('yaroqsiz') || apiError.value.includes('muddati')) {
+      : (msg || 'Xatolik yuz berdi. Qayta urinib ko\'ring.');
+    if (token.value && (apiError.value.includes('yaroqsiz') || apiError.value.includes('muddati'))) {
       state.value = 'invalid';
     }
   } finally {

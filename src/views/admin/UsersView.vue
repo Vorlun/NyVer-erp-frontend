@@ -384,7 +384,7 @@ async function handleAdjustCoins() {
             <input
               v-model="formEmail"
               type="email"
-              placeholder="anvar@example.com"
+              placeholder="one.humoyun@gmail.com"
               class="w-full rounded-xl border border-slate-200 p-2.5 focus:border-indigo-500 focus:outline-none"
             />
           </div>

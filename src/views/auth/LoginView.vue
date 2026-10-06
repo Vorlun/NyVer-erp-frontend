@@ -83,6 +83,10 @@ async function handleLogin() {
 
   const success = await authStore.login(loginInput.value, passwordInput.value);
   if (success) {
+    if (authStore.user?.tempPassword) {
+      router.push({ path: '/set-password', query: { mode: 'first-login' } });
+      return;
+    }
     if (authStore.isAdmin) {
       router.push("/dashboard");
     } else if (authStore.isTeacher) {

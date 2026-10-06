@@ -15,6 +15,11 @@ export function setupRouteGuards(
     return { name: 'login', query: { redirect: to.fullPath } };
   }
 
+  // 1.5. Agar foydalanuvchida 1 martalik vaqtinchalik parol bo'lsa -> Yangi parol o'rnatishga yo'naltirish
+  if (authStore.isAuthenticated && authStore.user?.tempPassword && to.name !== 'set-password') {
+    return { name: 'set-password', query: { mode: 'first-login' } };
+  }
+
   // 2. Agar foydalanuvchi tizimga kirgan bo'lsa va login sahifasiga bormoqchi bo'lsa -> Mos kabinetga yo'naltirish
   if (to.name === 'login' && authStore.isAuthenticated) {
     if (authStore.isAdmin) return { name: 'admin-dashboard' };

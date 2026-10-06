@@ -695,13 +695,16 @@ function getTeacherNameForGroup(g: any): string {
     const found = users.value.find((u) => u.id === g.teacherId);
     if (found) return `${found.firstName} ${found.lastName || ''}`.trim();
   }
-  if (g.name?.includes('BE-105')) return 'Rustam Qodirov';
-  if (g.name?.includes('FE-201') || g.name?.includes('IELTS')) return 'Oybek Yusupov';
+  if (g.name?.includes('FE-201')) return 'Rustam Qodirov';
+  if (g.name?.includes('BE-105')) return 'Alisher Zokirov';
+  if (g.name?.includes('IELTS')) return 'Dilnoza Karimova';
+  if (g.name?.includes('DS-101')) return 'Bekzod Toirov';
+  if (g.name?.includes('UI-102')) return 'Malika Yo\'ldosheva';
   const firstTeacher = users.value.find((u) => u.role === 'TEACHER');
   if (firstTeacher) {
     return `${firstTeacher.firstName} ${firstTeacher.lastName || ''}`.trim();
   }
-  return 'Oybek Yusupov';
+  return 'Rustam Qodirov';
 }
 
 

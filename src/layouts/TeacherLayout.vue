@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue';
-import { useRouter, useRoute } from 'vue-router';
-import { useAuthStore } from '../stores/auth';
-import { useNotificationsStore } from '../stores/notifications';
+import { ref, onMounted, onUnmounted } from "vue";
+import { useRouter, useRoute } from "vue-router";
+import { useAuthStore } from "../stores/auth";
+import { useNotificationsStore } from "../stores/notifications";
 import {
   Layers,
   CalendarCheck,
@@ -23,8 +23,8 @@ import {
   Check,
   Clock,
   Archive,
-} from 'lucide-vue-next';
-import nyverLogo from '@/assets/logo.png';
+} from "lucide-vue-next";
+import nyverLogo from "@/assets/logo.png";
 
 const router = useRouter();
 const route = useRoute();
@@ -43,13 +43,13 @@ const showLanguageMenu = ref(false);
 const showNotificationMenu = ref(false);
 const showProfileMenu = ref(false);
 const isDarkMode = ref(false);
-const searchQuery = ref('');
-const currentLang = ref('UZ');
+const searchQuery = ref("");
+const currentLang = ref("UZ");
 
 // Close dropdowns on outside click
 function onDocumentClick(e: MouseEvent) {
   const target = e.target as HTMLElement;
-  if (!target.closest('.dropdown-container')) {
+  if (!target.closest(".dropdown-container")) {
     showCalendarMenu.value = false;
     showQuickAddMenu.value = false;
     showLanguageMenu.value = false;
@@ -59,101 +59,107 @@ function onDocumentClick(e: MouseEvent) {
 }
 
 onMounted(() => {
-  document.addEventListener('click', onDocumentClick);
-  notificationsStore.connectWebSocket('TEACHER', authStore.user?.id);
+  document.addEventListener("click", onDocumentClick);
+  notificationsStore.connectWebSocket("TEACHER", authStore.user?.id);
 });
 
 onUnmounted(() => {
-  document.removeEventListener('click', onDocumentClick);
+  document.removeEventListener("click", onDocumentClick);
   notificationsStore.disconnectWebSocket();
 });
 
 // Primary Navigation Items
 const mainNavItems = [
   {
-    id: 'groups',
-    label: 'Guruhlar',
+    id: "groups",
+    label: "Guruhlar",
     icon: Layers,
-    to: '/teacher/dashboard',
-    checkActive: () => route.path === '/teacher/dashboard' && (!route.query.tab || route.query.tab === 'groups'),
+    to: "/teacher/dashboard",
+    checkActive: () =>
+      route.path === "/teacher/dashboard" &&
+      (!route.query.tab || route.query.tab === "groups"),
   },
   {
-    id: 'attendance',
-    label: 'Davomat',
+    id: "attendance",
+    label: "Davomat",
     icon: CalendarCheck,
-    to: '/teacher/attendance',
-    checkActive: () => route.path === '/teacher/attendance',
+    to: "/teacher/attendance",
+    checkActive: () => route.path === "/teacher/attendance",
   },
   {
-    id: 'homework',
-    label: 'Uy vazifalari',
+    id: "homework",
+    label: "Uy vazifalari",
     icon: BookOpenCheck,
-    to: '/teacher/homework',
-    checkActive: () => route.path === '/teacher/homework',
+    to: "/teacher/homework",
+    checkActive: () => route.path === "/teacher/homework",
   },
 ];
 
 // Submenu Items (Boshqarish - navigates to sections directly)
 const submenuItems = [
   {
-    id: 'active-groups',
-    label: 'Faol Guruhlar',
+    id: "active-groups",
+    label: "Faol Guruhlar",
     icon: Layers,
-    to: '/teacher/dashboard?tab=groups',
+    to: "/teacher/dashboard?tab=groups",
     action: () => {
-      router.push('/teacher/dashboard?tab=groups');
+      router.push("/teacher/dashboard?tab=groups");
       closeSubmenu();
       mobileSidebarOpen.value = false;
     },
-    checkActive: () => route.path === '/teacher/dashboard' && (!route.query.tab || route.query.tab === 'groups'),
+    checkActive: () =>
+      route.path === "/teacher/dashboard" &&
+      (!route.query.tab || route.query.tab === "groups"),
   },
   {
-    id: 'upcoming-groups',
-    label: 'Yig\'ilayotgan Guruhlar',
+    id: "upcoming-groups",
+    label: "Yig'ilayotgan Guruhlar",
     icon: Clock,
-    to: '/teacher/dashboard?tab=upcoming',
+    to: "/teacher/dashboard?tab=upcoming",
     action: () => {
-      router.push('/teacher/dashboard?tab=upcoming');
+      router.push("/teacher/dashboard?tab=upcoming");
       closeSubmenu();
       mobileSidebarOpen.value = false;
     },
-    checkActive: () => route.path === '/teacher/dashboard' && route.query.tab === 'upcoming',
+    checkActive: () =>
+      route.path === "/teacher/dashboard" && route.query.tab === "upcoming",
   },
   {
-    id: 'archive-groups',
-    label: 'Guruhlar Arxivi',
+    id: "archive-groups",
+    label: "Guruhlar Arxivi",
     icon: Archive,
-    to: '/teacher/dashboard?tab=archive',
+    to: "/teacher/dashboard?tab=archive",
     action: () => {
-      router.push('/teacher/dashboard?tab=archive');
+      router.push("/teacher/dashboard?tab=archive");
       closeSubmenu();
       mobileSidebarOpen.value = false;
     },
-    checkActive: () => route.path === '/teacher/dashboard' && route.query.tab === 'archive',
+    checkActive: () =>
+      route.path === "/teacher/dashboard" && route.query.tab === "archive",
   },
   {
-    id: 'take-attendance',
-    label: 'Davomat Qilish',
+    id: "take-attendance",
+    label: "Davomat Qilish",
     icon: CalendarCheck,
-    to: '/teacher/attendance',
+    to: "/teacher/attendance",
     action: () => {
-      router.push('/teacher/attendance');
+      router.push("/teacher/attendance");
       closeSubmenu();
       mobileSidebarOpen.value = false;
     },
-    checkActive: () => route.path === '/teacher/attendance',
+    checkActive: () => route.path === "/teacher/attendance",
   },
   {
-    id: 'check-homework',
-    label: 'Vazifalarni Tekshirish',
+    id: "check-homework",
+    label: "Vazifalarni Tekshirish",
     icon: BookOpenCheck,
-    to: '/teacher/homework',
+    to: "/teacher/homework",
     action: () => {
-      router.push('/teacher/homework');
+      router.push("/teacher/homework");
       closeSubmenu();
       mobileSidebarOpen.value = false;
     },
-    checkActive: () => route.path === '/teacher/homework',
+    checkActive: () => route.path === "/teacher/homework",
   },
 ];
 
@@ -181,12 +187,14 @@ function toggleSidebarCollapse() {
 
 function handleLogout() {
   authStore.logout();
-  router.push('/');
+  router.push("/");
 }
 </script>
 
 <template>
-  <div class="min-h-screen bg-slate-50 flex overflow-x-hidden font-sans text-slate-800">
+  <div
+    class="min-h-screen bg-slate-50 flex overflow-x-hidden font-sans text-slate-800"
+  >
     <!-- Dark Backdrop for 2nd Sidebar Flyout Drawer -->
     <div
       v-if="submenuOpen"
@@ -222,18 +230,28 @@ function handleLogout() {
             :class="sidebarCollapsed ? 'justify-center px-2' : 'px-4.5'"
           >
             <div class="flex items-center gap-3 overflow-hidden">
-              <img :src="nyverLogo" alt="NyVer" class="h-11 w-auto object-contain shrink-0 drop-shadow-xs" />
+              <img
+                :src="nyverLogo"
+                alt="NyVer"
+                class="h-11 w-auto object-contain shrink-0 drop-shadow-xs"
+              />
               <div v-if="!sidebarCollapsed" class="min-w-0 transition-opacity">
-                <span class="text-lg font-black tracking-tight text-slate-900 block truncate leading-tight">
+                <span
+                  class="text-lg font-black tracking-tight text-slate-900 block truncate leading-tight"
+                >
                   NyVer<span class="text-[#6D28D9]">Edu</span>
                 </span>
-                <span class="text-[11px] font-bold text-slate-400 block uppercase tracking-wider mt-0.5">
+                <span
+                  class="text-[11px] font-bold text-slate-400 block uppercase tracking-wider mt-0.5"
+                >
                   Ustoz Paneli
                 </span>
               </div>
             </div>
             <!-- Inset border line under logo (oxirigacha yetmagan) -->
-            <div class="absolute bottom-0 left-4 right-4 h-px bg-slate-200/80"></div>
+            <div
+              class="absolute bottom-0 left-4 right-4 h-px bg-slate-200/80"
+            ></div>
           </div>
 
           <!-- Main Nav Links with Hover Pointer Tooltips -->
@@ -257,16 +275,24 @@ function handleLogout() {
                 <component
                   :is="item.icon"
                   class="h-5 w-5 shrink-0 transition-colors"
-                  :class="isMainItemActive(item) ? 'text-[#6D28D9]' : 'text-slate-400 group-hover:text-slate-600'"
+                  :class="
+                    isMainItemActive(item)
+                      ? 'text-[#6D28D9]'
+                      : 'text-slate-400 group-hover:text-slate-600'
+                  "
                 />
-                <span v-if="!sidebarCollapsed" class="truncate">{{ item.label }}</span>
+                <span v-if="!sidebarCollapsed" class="truncate">{{
+                  item.label
+                }}</span>
               </router-link>
 
               <!-- Pointer Arrow Tooltip appearing on hover outside to the right -->
               <div
                 class="absolute left-full top-1/2 -translate-y-1/2 ml-3.5 px-3.5 py-2 bg-slate-900 text-white text-xs font-bold rounded-xl shadow-2xl whitespace-nowrap pointer-events-none opacity-0 group-hover:opacity-100 -translate-x-2 group-hover:translate-x-0 transition-all duration-200 z-100 flex items-center gap-1.5"
               >
-                <span class="absolute right-full top-1/2 -translate-y-1/2 -mr-px border-y-4 border-y-transparent border-r-6 border-r-slate-900"></span>
+                <span
+                  class="absolute right-full top-1/2 -translate-y-1/2 -mr-px border-y-4 border-y-transparent border-r-6 border-r-slate-900"
+                ></span>
                 <span>{{ item.label }}</span>
               </div>
             </div>
@@ -285,14 +311,18 @@ function handleLogout() {
                 ]"
               >
                 <Settings class="h-5 w-5 shrink-0" />
-                <span v-if="!sidebarCollapsed" class="truncate">Boshqarish</span>
+                <span v-if="!sidebarCollapsed" class="truncate"
+                  >Boshqarish</span
+                >
               </button>
 
               <!-- Pointer Arrow Tooltip for Boshqarish on hover -->
               <div
                 class="absolute left-full top-1/2 -translate-y-1/2 ml-3.5 px-3.5 py-2 bg-slate-900 text-white text-xs font-bold rounded-xl shadow-2xl whitespace-nowrap pointer-events-none opacity-0 group-hover:opacity-100 -translate-x-2 group-hover:translate-x-0 transition-all duration-200 z-100 flex items-center gap-1.5"
               >
-                <span class="absolute right-full top-1/2 -translate-y-1/2 -mr-px border-y-4 border-y-transparent border-r-6 border-r-slate-900"></span>
+                <span
+                  class="absolute right-full top-1/2 -translate-y-1/2 -mr-px border-y-4 border-y-transparent border-r-6 border-r-slate-900"
+                ></span>
                 <span>Boshqarish</span>
               </div>
             </div>
@@ -306,14 +336,20 @@ function handleLogout() {
             class="rounded-2xl p-3.5 bg-indigo-50/70 border border-indigo-200/60 shadow-2xs text-left mb-2"
           >
             <div class="flex items-center gap-2.5">
-              <div class="h-8 w-8 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold text-xs shrink-0">
-                {{ authStore.user?.firstName?.charAt(0) || 'U' }}
+              <div
+                class="h-8 w-8 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold text-xs shrink-0"
+              >
+                {{ authStore.user?.firstName?.charAt(0) || "U" }}
               </div>
               <div class="min-w-0">
-                <span class="text-xs font-bold text-slate-900 block truncate leading-tight">
+                <span
+                  class="text-xs font-bold text-slate-900 block truncate leading-tight"
+                >
                   {{ authStore.user?.firstName }} {{ authStore.user?.lastName }}
                 </span>
-                <span class="text-[10px] text-indigo-700 font-semibold">O'qituvchi</span>
+                <span class="text-[10px] text-indigo-700 font-semibold"
+                  >O'qituvchi</span
+                >
               </div>
             </div>
           </div>
@@ -345,7 +381,9 @@ function handleLogout() {
           <!-- Submenu Header: Title "Menu" with inset border that does not reach the ends -->
           <div class="relative h-17.5 flex items-center px-5">
             <h3 class="text-base font-extrabold text-slate-900">Menu</h3>
-            <div class="absolute bottom-0 left-4 right-4 h-px bg-slate-200/80"></div>
+            <div
+              class="absolute bottom-0 left-4 right-4 h-px bg-slate-200/80"
+            ></div>
           </div>
 
           <!-- Submenu Items with matching styles, hovers, active, and tooltips -->
@@ -373,7 +411,9 @@ function handleLogout() {
               <div
                 class="absolute left-full top-1/2 -translate-y-1/2 ml-3.5 px-3.5 py-2 bg-slate-900 text-white text-xs font-bold rounded-xl shadow-2xl whitespace-nowrap pointer-events-none opacity-0 group-hover:opacity-100 -translate-x-2 group-hover:translate-x-0 transition-all duration-200 z-100 flex items-center gap-1.5"
               >
-                <span class="absolute right-full top-1/2 -translate-y-1/2 -mr-px border-y-4 border-y-transparent border-r-6 border-r-slate-900"></span>
+                <span
+                  class="absolute right-full top-1/2 -translate-y-1/2 -mr-px border-y-4 border-y-transparent border-r-6 border-r-slate-900"
+                ></span>
                 <span>{{ item.label }}</span>
               </div>
             </div>
@@ -393,15 +433,30 @@ function handleLogout() {
         @click.stop
       >
         <div>
-          <div class="flex items-center justify-between pb-4 border-b border-slate-100">
+          <div
+            class="flex items-center justify-between pb-4 border-b border-slate-100"
+          >
             <div class="flex items-center gap-3">
-              <img :src="nyverLogo" alt="NyVer" class="h-11 w-auto object-contain shrink-0 drop-shadow-xs" />
+              <img
+                :src="nyverLogo"
+                alt="NyVer"
+                class="h-11 w-auto object-contain shrink-0 drop-shadow-xs"
+              />
               <div>
-                <span class="font-extrabold text-slate-900 leading-tight block text-base">NyVer Academy</span>
-                <span class="text-[11px] text-emerald-600 font-semibold uppercase">Ustoz Kabineti</span>
+                <span
+                  class="font-extrabold text-slate-900 leading-tight block text-base"
+                  >NyVer Academy</span
+                >
+                <span
+                  class="text-[11px] text-emerald-600 font-semibold uppercase"
+                  >Ustoz Kabineti</span
+                >
               </div>
             </div>
-            <button @click="mobileSidebarOpen = false" class="p-2 rounded-xl hover:bg-slate-100 text-slate-500 cursor-pointer">
+            <button
+              @click="mobileSidebarOpen = false"
+              class="p-2 rounded-xl hover:bg-slate-100 text-slate-500 cursor-pointer"
+            >
               <X class="h-5 w-5" />
             </button>
           </div>
@@ -455,7 +510,13 @@ function handleLogout() {
           <!-- Calendar Button -->
           <div class="relative dropdown-container">
             <button
-              @click.stop="showCalendarMenu = !showCalendarMenu; showQuickAddMenu = false; showLanguageMenu = false; showNotificationMenu = false; showProfileMenu = false;"
+              @click.stop="
+                showCalendarMenu = !showCalendarMenu;
+                showQuickAddMenu = false;
+                showLanguageMenu = false;
+                showNotificationMenu = false;
+                showProfileMenu = false;
+              "
               type="button"
               class="h-10 w-10 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 flex items-center justify-center text-slate-600 transition-colors cursor-pointer shrink-0 shadow-2xs"
               title="Dars jadvali & sana"
@@ -468,13 +529,27 @@ function handleLogout() {
               v-if="showCalendarMenu"
               class="absolute left-0 mt-2 w-80 bg-white rounded-2xl shadow-xl border border-slate-200/90 p-4 z-50 text-left"
             >
-              <div class="flex items-center justify-between pb-2 border-b border-slate-100">
-                <span class="text-xs font-bold text-slate-800">Ustoz Jadvali</span>
-                <span class="text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-md font-semibold">Bugun</span>
+              <div
+                class="flex items-center justify-between pb-2 border-b border-slate-100"
+              >
+                <span class="text-xs font-bold text-slate-800"
+                  >Ustoz Jadvali</span
+                >
+                <span
+                  class="text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-md font-semibold"
+                  >Bugun</span
+                >
               </div>
               <div class="py-2.5 text-xs text-slate-600 space-y-1.5">
                 <div class="font-bold text-slate-900 text-sm">
-                  {{ new Date().toLocaleDateString('uz-UZ', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) }}
+                  {{
+                    new Date().toLocaleDateString("uz-UZ", {
+                      weekday: "long",
+                      year: "numeric",
+                      month: "long",
+                      day: "numeric",
+                    })
+                  }}
                 </div>
                 <div class="flex items-center gap-1.5 text-slate-500">
                   <Clock class="h-4 w-4 text-emerald-600" />
@@ -487,7 +562,13 @@ function handleLogout() {
           <!-- "+ Qo'shish" Dropdown Button -->
           <div class="relative dropdown-container">
             <button
-              @click.stop="showQuickAddMenu = !showQuickAddMenu; showCalendarMenu = false; showLanguageMenu = false; showNotificationMenu = false; showProfileMenu = false;"
+              @click.stop="
+                showQuickAddMenu = !showQuickAddMenu;
+                showCalendarMenu = false;
+                showLanguageMenu = false;
+                showNotificationMenu = false;
+                showProfileMenu = false;
+              "
               type="button"
               class="h-9 px-3.5 rounded-xl bg-[#6D28D9] hover:bg-[#5B21B6] active:bg-[#4C1D95] text-white text-xs font-bold flex items-center gap-2 transition-all cursor-pointer shadow-xs shrink-0"
             >
@@ -502,13 +583,19 @@ function handleLogout() {
               class="absolute left-0 mt-2 w-56 bg-white rounded-2xl shadow-xl border border-slate-200/90 py-2 z-50 text-left"
             >
               <button
-                @click="router.push('/teacher/homework'); showQuickAddMenu = false;"
+                @click="
+                  router.push('/teacher/homework');
+                  showQuickAddMenu = false;
+                "
                 class="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 transition cursor-pointer"
               >
                 <span>Yangi vazifa berish</span>
               </button>
               <button
-                @click="router.push('/teacher/attendance'); showQuickAddMenu = false;"
+                @click="
+                  router.push('/teacher/attendance');
+                  showQuickAddMenu = false;
+                "
                 class="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 transition cursor-pointer"
               >
                 <span>Davomat qilish</span>
@@ -518,7 +605,9 @@ function handleLogout() {
 
           <!-- Search Input: "Qidirish..." -->
           <div class="relative w-full max-w-sm hidden sm:block">
-            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+            <div
+              class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400"
+            >
               <Search class="h-4.5 w-4.5" />
             </div>
             <input
@@ -535,7 +624,13 @@ function handleLogout() {
           <!-- Language Selector (2-letter codes: UZ / RU / EN) -->
           <div class="relative dropdown-container">
             <button
-              @click.stop="showLanguageMenu = !showLanguageMenu; showCalendarMenu = false; showQuickAddMenu = false; showNotificationMenu = false; showProfileMenu = false;"
+              @click.stop="
+                showLanguageMenu = !showLanguageMenu;
+                showCalendarMenu = false;
+                showQuickAddMenu = false;
+                showNotificationMenu = false;
+                showProfileMenu = false;
+              "
               type="button"
               class="h-9 inline-flex items-center gap-1.5 px-2.5 text-xs font-bold text-slate-700 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer border border-slate-200/80 shadow-2xs bg-white"
               title="Tilni tanlash"
@@ -552,18 +647,30 @@ function handleLogout() {
                 v-for="lang in [
                   { code: 'UZ', label: 'O\'zbekcha' },
                   { code: 'RU', label: 'Русский' },
-                  { code: 'EN', label: 'English' }
+                  { code: 'EN', label: 'English' },
                 ]"
                 :key="lang.code"
-                @click="currentLang = lang.code; showLanguageMenu = false;"
+                @click="
+                  currentLang = lang.code;
+                  showLanguageMenu = false;
+                "
                 class="w-full flex items-center justify-between px-3.5 py-2 hover:bg-violet-50 hover:text-[#6D28D9] transition cursor-pointer font-semibold"
-                :class="currentLang === lang.code ? 'text-[#6D28D9] bg-violet-50/60 font-bold' : 'text-slate-700'"
+                :class="
+                  currentLang === lang.code
+                    ? 'text-[#6D28D9] bg-violet-50/60 font-bold'
+                    : 'text-slate-700'
+                "
               >
                 <div class="flex items-center gap-2">
                   <span class="w-6 font-mono font-bold">{{ lang.code }}</span>
-                  <span class="text-slate-500 font-normal">{{ lang.label }}</span>
+                  <span class="text-slate-500 font-normal">{{
+                    lang.label
+                  }}</span>
                 </div>
-                <Check v-if="currentLang === lang.code" class="h-3.5 w-3.5 text-[#6D28D9]" />
+                <Check
+                  v-if="currentLang === lang.code"
+                  class="h-3.5 w-3.5 text-[#6D28D9]"
+                />
               </button>
             </div>
           </div>
@@ -571,7 +678,13 @@ function handleLogout() {
           <!-- Notification Bell -->
           <div class="relative dropdown-container">
             <button
-              @click.stop="showNotificationMenu = !showNotificationMenu; showCalendarMenu = false; showQuickAddMenu = false; showLanguageMenu = false; showProfileMenu = false;"
+              @click.stop="
+                showNotificationMenu = !showNotificationMenu;
+                showCalendarMenu = false;
+                showQuickAddMenu = false;
+                showLanguageMenu = false;
+                showProfileMenu = false;
+              "
               type="button"
               class="h-10 w-10 rounded-xl hover:bg-slate-100 flex items-center justify-center text-slate-600 relative transition-colors cursor-pointer"
               title="Bildirishnomalar"
@@ -590,8 +703,12 @@ function handleLogout() {
               v-if="showNotificationMenu"
               class="absolute right-0 mt-2 w-80 sm:w-88 bg-white rounded-2xl shadow-xl border border-slate-200/90 p-4 z-50 text-left text-xs space-y-3"
             >
-              <div class="flex items-center justify-between border-b border-slate-100 pb-2">
-                <span class="font-bold text-slate-900 text-sm">Bildirishnomalar</span>
+              <div
+                class="flex items-center justify-between border-b border-slate-100 pb-2"
+              >
+                <span class="font-bold text-slate-900 text-sm"
+                  >Bildirishnomalar</span
+                >
                 <button
                   v-if="notificationsStore.teacherUnreadCount > 0"
                   @click="notificationsStore.markAllAsRead"
@@ -610,19 +727,35 @@ function handleLogout() {
                   Yangi bildirishnomalar yo'q
                 </div>
                 <div
-                  v-for="n in notificationsStore.teacherNotifications.slice(0, 6)"
+                  v-for="n in notificationsStore.teacherNotifications.slice(
+                    0,
+                    6,
+                  )"
                   :key="n.id"
                   @click="notificationsStore.markAsRead(n.id)"
                   class="p-2.5 rounded-xl border transition cursor-pointer"
-                  :class="!n.read ? 'bg-violet-50/60 border-violet-100' : 'bg-white border-slate-100'"
+                  :class="
+                    !n.read
+                      ? 'bg-violet-50/60 border-violet-100'
+                      : 'bg-white border-slate-100'
+                  "
                 >
                   <div class="flex items-center justify-between mb-1">
-                    <span class="font-bold text-slate-900 truncate">{{ n.title }}</span>
+                    <span class="font-bold text-slate-900 truncate">{{
+                      n.title
+                    }}</span>
                     <span class="text-[10px] text-slate-400 font-mono">
-                      {{ new Date(n.createdAt).toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit' }) }}
+                      {{
+                        new Date(n.createdAt).toLocaleTimeString("uz-UZ", {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })
+                      }}
                     </span>
                   </div>
-                  <p class="text-slate-600 line-clamp-2 leading-relaxed">{{ n.message }}</p>
+                  <p class="text-slate-600 line-clamp-2 leading-relaxed">
+                    {{ n.message }}
+                  </p>
                 </div>
               </div>
             </div>
@@ -641,12 +774,18 @@ function handleLogout() {
           <!-- Teacher Profile Avatar Initial "T" (Image 3) -->
           <div class="relative dropdown-container">
             <button
-              @click.stop="showProfileMenu = !showProfileMenu; showCalendarMenu = false; showQuickAddMenu = false; showLanguageMenu = false; showNotificationMenu = false;"
+              @click.stop="
+                showProfileMenu = !showProfileMenu;
+                showCalendarMenu = false;
+                showQuickAddMenu = false;
+                showLanguageMenu = false;
+                showNotificationMenu = false;
+              "
               type="button"
               class="h-9 w-9 rounded-xl bg-violet-100 text-[#6D28D9] border border-violet-200 text-xs font-black flex items-center justify-center shadow-2xs cursor-pointer hover:bg-violet-200/70 transition"
               title="Profil menyusi"
             >
-              {{ authStore.user?.firstName?.charAt(0) || 'T' }}
+              {{ authStore.user?.firstName?.charAt(0) || "T" }}
             </button>
 
             <div
@@ -657,7 +796,10 @@ function handleLogout() {
                 <p class="text-sm font-bold text-slate-800 truncate">
                   {{ authStore.user?.firstName }} {{ authStore.user?.lastName }}
                 </p>
-                <span class="text-xs text-emerald-600 font-semibold uppercase mt-0.5 block">O'qituvchi</span>
+                <span
+                  class="text-xs text-emerald-600 font-semibold uppercase mt-0.5 block"
+                  >O'qituvchi</span
+                >
               </div>
               <button
                 @click="handleLogout"

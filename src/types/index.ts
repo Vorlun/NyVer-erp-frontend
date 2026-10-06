@@ -100,6 +100,7 @@ export interface Course {
 
   groups?: Group[];
   syllabus?: CourseSyllabus[];
+  plans?: CoursePlan[];
 }
 
 export interface CourseSyllabus {
@@ -109,6 +110,26 @@ export interface CourseSyllabus {
   description?: string | null;
   courseId: number;
   course?: Course;
+}
+
+export interface CoursePlanLesson {
+  id: number;
+  lessonOrder: number;
+  topic: string;
+  description?: string | null;
+  planId: number;
+}
+
+export interface CoursePlan {
+  id: number;
+  title: string;
+  description?: string | null;
+  isDefault: boolean;
+  courseId: number;
+  created_at?: string;
+  updated_at?: string;
+  lessons?: CoursePlanLesson[];
+  _count?: { groups: number };
 }
 
 export interface Room {
@@ -136,10 +157,12 @@ export interface Group {
   courseId: number;
   roomId: number;
   teacherId?: number;
+  planId?: number | null;
   created_at: string;
   updated_at: string;
 
   course?: Course;
+  plan?: CoursePlan | null;
   room?: Room;
   students?: GroupStudent[];
   teachers?: GroupTeacher[];
@@ -394,7 +417,9 @@ export interface CreateUserDto {
   phone: string;
   email?: string;
   password?: string;
+  birthDate?: string;
   address?: string;
+  photo?: string;
 }
 
 export interface CreateGroupDto {
@@ -407,6 +432,7 @@ export interface CreateGroupDto {
   endTime: string;
   weekDays: WeekDay[];
   maxStudents?: number;
+  planId?: number;
 }
 
 // ------------------------------------------------------

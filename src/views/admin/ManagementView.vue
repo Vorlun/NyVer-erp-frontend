@@ -2,7 +2,7 @@
 import { ref, computed, onMounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { erpService } from '../../api/erpService';
-import type { Course, Room, User } from '../../types';
+import type { Course, Room, User, CoursePlan, CoursePlanLesson } from '../../types';
 import Modal from '../../components/ui/Modal.vue';
 import Pagination from '../../components/ui/Pagination.vue';
 import {
@@ -17,6 +17,10 @@ import {
   Mail,
   Archive,
   RotateCcw,
+  Layers,
+  Plus,
+  Save,
+  BookOpen,
 } from 'lucide-vue-next';
 
 const route = useRoute();
@@ -37,12 +41,28 @@ const isEditingCourse = ref(false);
 const editingCourseId = ref<number | null>(null);
 const courseFormName = ref('');
 const courseFormLessonDuration = ref('60 daqiqa');
-const courseFormMonths = ref<number>(6);
+const courseFormMonths = ref<number>(3);
+const courseFormLessonsPerMonth = ref<number>(12);
+const courseFormTotalLessons = ref<number>(36);
 const courseFormPrice = ref<number | string>('');
 const courseFormDescription = ref('');
 const courseFormStatus = ref<'ACTIVE' | 'INACTIVE' | 'ARCHIVED'>('ACTIVE');
 const courseSubmitting = ref(false);
 const courseError = ref('');
+
+// Watch months and lessonsPerMonth to auto-calculate totalLessons
+watch([courseFormMonths, courseFormLessonsPerMonth], ([m, l]) => {
+  courseFormTotalLessons.value = (Number(m) || 1) * (Number(l) || 12);
+});
+
+// ================= KURSLAR DARS REJALARI (CURRICULUM PLANS) STATE =================
+const showPlansModal = ref(false);
+const selectedCourseForPlans = ref<Course | null>(null);
+const coursePlansList = ref<CoursePlan[]>([]);
+const selectedPlanIndex = ref<number>(0);
+const plansLoading = ref(false);
+const plansSaving = ref(false);
+const plansFeedback = ref<{ text: string; type: 'success' | 'error' } | null>(null);
 
 // ================= XONALAR (ROOMS) STATE =================
 const roomTab = ref<'ACTIVE' | 'ARCHIVE'>('ACTIVE');
@@ -83,49 +103,25 @@ const showConfirmModal = ref(false);
 const confirmTarget = ref<ConfirmActionTarget | null>(null);
 const confirmSubmitting = ref(false);
 
-// ================= OCH KO'K, OCH QORA VA STEEL SLATE THEMES =================
-const courseCardThemes = [
-  {
-    bg: 'bg-[#F0F6FD]', // Och ko'k (Ice Blue)
-    border: 'border-[#D0E2F5] hover:border-blue-400/80 hover:shadow-md',
-    accent: 'bg-blue-600',
-  },
-  {
-    bg: 'bg-[#F3F5F8]', // Och qora / Slate Graphite (Soft Charcoal)
-    border: 'border-[#D8DEE7] hover:border-slate-400/80 hover:shadow-md',
-    accent: 'bg-slate-700',
-  },
-  {
-    bg: 'bg-[#EEF2F7]', // Shu 2 rang orasidagi rang (Cool Steel Slate Blue)
-    border: 'border-[#D2DCE8] hover:border-indigo-400/80 hover:shadow-md',
-    accent: 'bg-indigo-600',
-  },
-];
+// ================= OCH KO'K LIGHT BLUE THEME (KURSLAR VA XONALAR) =================
+const lightBlueCourseTheme = {
+  bg: 'bg-[#F0F6FD]', // Och ko'k (Ice Blue)
+  border: 'border-[#D0E2F5] hover:border-blue-400/80 hover:shadow-md',
+  accent: 'bg-blue-600',
+};
 
-function getCourseTheme(index: number) {
-  return courseCardThemes[index % courseCardThemes.length];
+function getCourseTheme(_index: number) {
+  return lightBlueCourseTheme;
 }
 
-const roomCardThemes = [
-  {
-    bg: 'bg-[#F0F6FD]', // Och ko'k
-    border: 'border-[#D0E2F5] hover:border-blue-400/80 hover:shadow-md',
-    iconBg: 'bg-blue-100 text-blue-700',
-  },
-  {
-    bg: 'bg-[#F3F5F8]', // Och qora / Slate
-    border: 'border-[#D8DEE7] hover:border-slate-400/80 hover:shadow-md',
-    iconBg: 'bg-slate-200 text-slate-700',
-  },
-  {
-    bg: 'bg-[#EEF2F7]', // Orasidagi rang (Steel Slate Blue)
-    border: 'border-[#D2DCE8] hover:border-indigo-400/80 hover:shadow-md',
-    iconBg: 'bg-indigo-100 text-indigo-700',
-  },
-];
+const lightBlueRoomTheme = {
+  bg: 'bg-[#F0F6FD]', // Och ko'k (Ice Blue)
+  border: 'border-[#D0E2F5] hover:border-blue-400/80 hover:shadow-md',
+  iconBg: 'bg-blue-100 text-blue-700',
+};
 
-function getRoomTheme(index: number) {
-  return roomCardThemes[index % roomCardThemes.length];
+function getRoomTheme(_index: number) {
+  return lightBlueRoomTheme;
 }
 
 // ================= COMPUTED LISTS =================
@@ -241,12 +237,15 @@ function switchTab(tab: 'courses' | 'rooms' | 'staff') {
 }
 
 // ================= COURSE METHODS =================
+// ================= COURSE METHODS =================
 function openCreateCourseDrawer() {
   isEditingCourse.value = false;
   editingCourseId.value = null;
   courseFormName.value = '';
   courseFormLessonDuration.value = '60 daqiqa';
-  courseFormMonths.value = 6;
+  courseFormMonths.value = 3;
+  courseFormLessonsPerMonth.value = 12;
+  courseFormTotalLessons.value = 36;
   courseFormPrice.value = '';
   courseFormDescription.value = '';
   courseFormStatus.value = 'ACTIVE';
@@ -259,7 +258,9 @@ function openEditCourseDrawer(c: Course) {
   editingCourseId.value = c.id;
   courseFormName.value = c.name;
   courseFormLessonDuration.value = (c as any).lessonDuration || '60 daqiqa';
-  courseFormMonths.value = c.durationMonths || 6;
+  courseFormMonths.value = c.durationMonths || 3;
+  courseFormLessonsPerMonth.value = c.lessonsPerMonth || 12;
+  courseFormTotalLessons.value = c.totalLessons || (c.durationMonths * 12);
   courseFormPrice.value = c.price;
   courseFormDescription.value = c.description || '';
   courseFormStatus.value = (c.status as any) || 'ACTIVE';
@@ -274,11 +275,14 @@ async function handleSaveCourse() {
   }
   courseSubmitting.value = true;
   try {
+    const total = Number(courseFormTotalLessons.value) || Number(courseFormMonths.value) * 12;
     if (isEditingCourse.value && editingCourseId.value) {
       await erpService.updateCourse(editingCourseId.value, {
         name: courseFormName.value.trim(),
         price: Number(courseFormPrice.value),
         durationMonths: Number(courseFormMonths.value),
+        lessonsPerMonth: Number(courseFormLessonsPerMonth.value) || 12,
+        totalLessons: total,
         description: courseFormDescription.value.trim() || undefined,
         status: courseFormStatus.value as any,
       });
@@ -287,12 +291,31 @@ async function handleSaveCourse() {
         name: courseFormName.value.trim(),
         price: Number(courseFormPrice.value),
         durationMonths: Number(courseFormMonths.value),
+        lessonsPerMonth: Number(courseFormLessonsPerMonth.value) || 12,
+        totalLessons: total,
         description: courseFormDescription.value.trim() || undefined,
-        lessonsPerMonth: 12,
-        totalLessons: Number(courseFormMonths.value) * 12,
       });
       if (courseFormStatus.value !== 'ACTIVE' && created?.id) {
         await erpService.updateCourse(created.id, { status: courseFormStatus.value as any });
+      }
+
+      // Automatically create an initial default CoursePlan with lessons template
+      if (created?.id) {
+        try {
+          const lessonTemplates = generatePresetLessons(courseFormName.value.trim(), Math.min(total, 24));
+          await erpService.createCoursePlan(created.id, {
+            title: "Standart O'quv Dasturi",
+            description: `${courseFormMonths.value} oylik o'quv dasturi`,
+            isDefault: true,
+            lessons: lessonTemplates.map(l => ({
+              lessonOrder: l.lessonOrder,
+              topic: l.topic,
+              description: l.description || undefined,
+            })),
+          });
+        } catch (e) {
+          console.warn("Dastlabki reja yaratishda ogohlantirish:", e);
+        }
       }
     }
     showCourseDrawer.value = false;
@@ -301,6 +324,261 @@ async function handleSaveCourse() {
     courseError.value = err.response?.data?.message || err.message || 'Xatolik yuz berdi';
   } finally {
     courseSubmitting.value = false;
+  }
+}
+
+// ================= KURSLAR DARS REJALARI (CURRICULUM PLANS) METHODS =================
+const activePlan = computed(() => {
+  return coursePlansList.value[selectedPlanIndex.value] || null;
+});
+
+async function openPlansModal(course: Course) {
+  selectedCourseForPlans.value = course;
+  plansFeedback.value = null;
+  plansLoading.value = true;
+  showPlansModal.value = true;
+
+  try {
+    const plans = await erpService.getCoursePlans(course.id);
+    if (plans && plans.length > 0) {
+      coursePlansList.value = plans;
+    } else {
+      // Create initial draft plan if course has none
+      const total = course.totalLessons || (course.durationMonths || 3) * 12;
+      coursePlansList.value = [
+        {
+          id: 0,
+          title: "Standart o'quv dasturi",
+          description: `${course.durationMonths || 3} oylik o'quv dasturi`,
+          isDefault: true,
+          courseId: course.id,
+          lessons: generatePresetLessons(course.name, Math.min(total, 24)),
+        },
+      ];
+    }
+    selectedPlanIndex.value = 0;
+  } catch (err) {
+    console.error("Dars rejalari yuklashda xatolik:", err);
+  } finally {
+    plansLoading.value = false;
+  }
+}
+
+function closePlansModal() {
+  showPlansModal.value = false;
+  selectedCourseForPlans.value = null;
+  coursePlansList.value = [];
+  plansFeedback.value = null;
+}
+
+function addNewPlan() {
+  if (!selectedCourseForPlans.value) return;
+  const newIndex = coursePlansList.value.length;
+  const total = selectedCourseForPlans.value.totalLessons || (selectedCourseForPlans.value.durationMonths || 3) * 12;
+  const newPlan: CoursePlan = {
+    id: 0,
+    title: `O'quv Rejasi #${newIndex + 1}`,
+    description: "Yangi dars jadvali shabloni",
+    isDefault: false,
+    courseId: selectedCourseForPlans.value.id,
+    lessons: generatePresetLessons(selectedCourseForPlans.value.name, Math.min(total, 12)),
+  };
+  coursePlansList.value.push(newPlan);
+  selectedPlanIndex.value = newIndex;
+}
+
+function addLessonToActivePlan() {
+  if (!activePlan.value) return;
+  if (!activePlan.value.lessons) activePlan.value.lessons = [];
+  const nextOrder = activePlan.value.lessons.length + 1;
+  activePlan.value.lessons.push({
+    id: 0,
+    planId: activePlan.value.id || 0,
+    lessonOrder: nextOrder,
+    topic: `${nextOrder}-dars: Mavzu nomi`,
+    description: "Amaliy vazifa va materiallar",
+  });
+}
+
+function removeLessonFromActivePlan(index: number) {
+  if (!activePlan.value || !activePlan.value.lessons) return;
+  activePlan.value.lessons.splice(index, 1);
+  activePlan.value.lessons.forEach((l, idx) => {
+    l.lessonOrder = idx + 1;
+  });
+}
+
+function autoFillPlanTemplate(count: number) {
+  if (!activePlan.value || !selectedCourseForPlans.value) return;
+  activePlan.value.lessons = generatePresetLessons(selectedCourseForPlans.value.name, count);
+}
+
+function generatePresetLessons(courseName: string, count: number): CoursePlanLesson[] {
+  const name = courseName.toLowerCase();
+  let baseList: { topic: string; description: string }[] = [];
+
+  if (name.includes('figma') || name.includes('ui') || name.includes('ux') || name.includes('dizayn')) {
+    baseList = [
+      { topic: "UI/UX Asoslari: Dizayn fikrlash (Design Thinking)", description: "UX va UI farqlari, mahsulot yaratish bosqichlari" },
+      { topic: "Figma bilan tanishuv: Interfeys, Frame va Asboblar", description: "Figma muhitini sozlash, asosiy vektor asboblari" },
+      { topic: "Ranglar nazariyasi va Tipografika qoidalari", description: "Kontrast, ierarxiya, zamonaviy shrift juftliklari" },
+      { topic: "Auto Layout asoslari va Flexbox tamoyillari", description: "Padding, gap, alignment va responsive komponentlar" },
+      { topic: "Auto Layout chuqurlashtirilgan: Min/Max o'lchamlar", description: "Murakkab kartochkalar va menyular qurish" },
+      { topic: "Figma Komponentlari va Variantlar (Variants)", description: "Reusability, tugmalar, formalar va holatlar (states)" },
+      { topic: "Komponent xususiyatlari: Boolean, Text, Swap Instance", description: "Yangi komponent tizimi imkoniyatlari" },
+      { topic: "Figma Variables: Rang va o'lcham tokenlari", description: "Design tokenlar, Dark mode va Light mode yaratish" },
+      { topic: "UX Research: Foydalanuvchi intervyulari va Persona", description: "Target audience aniqlash, empathy map tuzish" },
+      { topic: "User Journey Map va Information Architecture", description: "Foydalanuvchi yo'li va sayt xaritasi (sitemap)" },
+      { topic: "Wireframing: Low-fidelity va High-fidelity eskizlar", description: "Struktura yaratish va tezkor g'oyalarni tekshirish" },
+      { topic: "Mobile App Dizayni: iOS Human Interface Guidelines", description: "iOS standartlari, safe area, tab bar va navigatsiya" },
+      { topic: "Mobile App Dizayni: Material Design 3 (Android)", description: "Material you tamoyillari va Android grid tizimi" },
+      { topic: "Web Dashboard Dizayni: 12-ustunli Grid tizimi", description: "Katta ekranlar uchun ma'lumotlar jadvallari va widgetlar" },
+      { topic: "E-commerce do'koni uchun UI yaratish", description: "Katalog, mahsulot kartasi va savatcha sahifalari" },
+      { topic: "Forma va Inputlar UX dizayni", description: "Xatoliklar holati, validatsiya va qulay to'lov oqimi" },
+      { topic: "Interaktiv Prototiplash: Smart Animate", description: "Sahifalararo silliq o'tishlar va mikro-harakatlar" },
+      { topic: "Murakkab Prototiplash: Variables va Conditions", description: "Interaktiv savatcha, hisoblagich va forma prototipi" },
+      { topic: "Dizayn Tizimi (Design System) yaratish: 1-qism", description: "Ranglar, tipografika va ikonalar kutubxonasi" },
+      { topic: "Dizayn Tizimi (Design System) yaratish: 2-qism", description: "Murakkab komponentlar va dokumentatsiya yozish" },
+      { topic: "Mikro-animatsiyalar va Loading holatlari", description: "Skeleton loaderlar, spinnerlar va mikro-interaksiyalar" },
+      { topic: "Usability Testing: Prototipni foydalanuvchida tekshirish", description: "Test o'tkazish metodlari va dizaynni yaxshilash" },
+      { topic: "Dizaynni dasturchilarga topshirish (Design Handoff)", description: "Figma Dev Mode, CSS eksport va spetsifikatsiyalar" },
+      { topic: "Portfolio Tayyorlash: Behance va Dribbble Case Study", description: "Loyihani taqdim qilish va ishga kirish strategiyasi" },
+    ];
+  } else if (name.includes('front') || name.includes('vue') || name.includes('react') || name.includes('web')) {
+    baseList = [
+      { topic: "Frontend arxitekturasi: Zamonaviy web-ilovalar va Vite", description: "Vite muhiti, Node.js va npm paketi" },
+      { topic: "TypeScript Asoslari: Tiplar, Interface va Type Alias", description: "Statik tiplash va xavfsiz kod yozish" },
+      { topic: "Composition API: ref, reactive va reaktivlik asoslari", description: "Reaktiv ma'lumotlar bilan ishlash asoslari" },
+      { topic: "Computed xossalari va Watchers (watch, watchEffect)", description: "Hisoblanuvchi parametrlar va reaktiv kuzatuv" },
+      { topic: "Komponentlar arxitekturasi: Props va Emits", description: "Ota-bola komponentlar aloqasi va TypeScript typing" },
+      { topic: "Slots va Dinamik Komponentlar", description: "Reusability va moslashuvchan UI komponentlar qurish" },
+      { topic: "Router: Dinamik marshrutlar va Navigation Guards", description: "Autentifikatsiya tekshiruvlari va navigatsiya" },
+      { topic: "State Management: Global Holat Boshqaruvi", description: "Store, getters, actions va modullar" },
+      { topic: "Axios va REST API: Interceptorlar va JWT Tokenlar", description: "Avtorizatsiya, xatoliklarni tutish va bearer token" },
+      { topic: "WebSocket va Real-time bildirishnomalar", description: "Client-server doimiy ochiq aloqasi" },
+      { topic: "Tailwind CSS bilan Zamonaviy UI Qurish", description: "Responsive grid, dark mode va Tailwind imkoniyatlari" },
+      { topic: "Amaliy Loyiha: Full-stack ERP Dashboardi", description: "Jadvallar, statistik kartalar va filtrlar" },
+    ];
+  } else if (name.includes('back') || name.includes('nest') || name.includes('node')) {
+    baseList = [
+      { topic: "Backend Arxitekturasi: Modullar, Kontrollerlar va Servislar", description: "Dependency Injection (DI) tamoyili" },
+      { topic: "PostgreSQL va Relyatsion Ma'lumotlar Bazasi Asoslari", description: "Normalizatsiya, foreign key va indekslar" },
+      { topic: "Prisma ORM: Sxema, Migratsiyalar va Relatsiyalar", description: "One-to-many, many-to-many bog'lanishlar" },
+      { topic: "Validation va DTO: class-validator va class-transformer", description: "So'rovlarni tekshirish va xatoliklar javobi" },
+      { topic: "Autentifikatsiya: JWT, Refresh Token va Parollarni xesh qilish", description: "bcrypt va passport-jwt integratsiyasi" },
+      { topic: "Avtorizatsiya va RBAC: Roles Guard va Dekoratorlar", description: "Admin, Ustoz va Talaba rollarini ajratish" },
+      { topic: "WebSocket Gateway: Real-time Xabarnomalar", description: "Socket.IO va real-time hodisalar almashish" },
+      { topic: "Redis Kesh va Fon Jarayonlari (BullMQ)", description: "Tezkor keshlash va kechiktirilgan vazifalar" },
+    ];
+  } else if (name.includes('ielts') || name.includes('english') || name.includes('ingliz')) {
+    baseList = [
+      { topic: "IELTS Exam Overview & Diagnostic Assessment", description: "Scoring criteria and personal study plan" },
+      { topic: "Listening Section 1 & 2: Form & Map Completion", description: "Spelling, numbers and spatial navigation" },
+      { topic: "Reading Academic: Skimming, Scanning & Keywords", description: "True/False/Not Given mastery" },
+      { topic: "Writing Task 1: Trends, Graphs & Comparisons", description: "Overview structure and data reporting language" },
+      { topic: "Speaking Part 1 & 2: Fluency, Range & Idioms", description: "Speaking without hesitation and cue cards" },
+      { topic: "Writing Task 2: Opinion & Discussion Essays", description: "Cohesion, coherence and paragraph architecture" },
+    ];
+  } else if (name.includes('python') || name.includes('data') || name.includes('ai')) {
+    baseList = [
+      { topic: "Python Asoslari va Algoritmlar", description: "Ma'lumotlar turlari, funksiyalar va OOP" },
+      { topic: "NumPy: Ko'p o'lchovli massivlar bilan hisoblash", description: "Vektorlashgan hisob-kitoblar va operatsiyalar" },
+      { topic: "Pandas: Dataframe tahlili va Tozalash", description: "Missing data, filtering va aggregation" },
+      { topic: "Ma'lumotlarni Vizualizatsiya qilish: Matplotlib & Seaborn", description: "Grafiklar, trendlar va tahliliy xulosalar" },
+      { topic: "Machine Learning: Regressiya va Klassifikatsiya", description: "Scikit-Learn bilan bashorat modellari tuzish" },
+      { topic: "Amaliy Loyiha: Biznes analitika va AI bashorati", description: "Real ma'lumotlar ustida to'liq data pipeline" },
+    ];
+  } else {
+    baseList = [
+      { topic: "Kirish: Kursning maqsad va vazifalari", description: "Asosiy tushunchalar va talablar" },
+      { topic: "Asosiy metodologiya va amaliy vositalar", description: "Ish qurollari bilan tanishuv" },
+      { topic: "Amaliy mashg'ulot: 1-bosqich vazifalari", description: "Boshlang'ich topshiriqlar tahlili" },
+      { topic: "Chuqurlashtirilgan mavzular va tahlil", description: "Keyslar ustida ishlash" },
+      { topic: "Oraliq nazorat va bilimlarni tekshirish", description: "Test va mini-loyihalar taqdimoti" },
+      { topic: "Yakuniy amaliy loyiha va himoya", description: "Portfolio topshirig'i" },
+    ];
+  }
+
+  const result: CoursePlanLesson[] = [];
+  for (let i = 0; i < count; i++) {
+    const preset = baseList[i % baseList.length];
+    const lessonOrder = i + 1;
+    const cycle = Math.floor(i / baseList.length);
+    const suffix = cycle > 0 ? ` (${cycle + 1}-qism)` : '';
+    result.push({
+      id: 0,
+      planId: 0,
+      lessonOrder,
+      topic: `${preset.topic}${suffix}`,
+      description: preset.description,
+    });
+  }
+  return result;
+}
+
+async function saveActivePlan() {
+  if (!activePlan.value || !selectedCourseForPlans.value) return;
+  if (!activePlan.value.title.trim()) {
+    plansFeedback.value = { text: "Iltimos, o'quv reja nomini kiriting.", type: 'error' };
+    return;
+  }
+
+  plansSaving.value = true;
+  plansFeedback.value = null;
+
+  try {
+    const courseId = selectedCourseForPlans.value.id;
+    const planData = {
+      title: activePlan.value.title.trim(),
+      description: activePlan.value.description?.trim() || undefined,
+      isDefault: activePlan.value.isDefault ?? false,
+      lessons: (activePlan.value.lessons || []).map((l, idx) => ({
+        lessonOrder: idx + 1,
+        topic: l.topic || `${idx + 1}-dars`,
+        description: l.description || undefined,
+      })),
+    };
+
+    if (activePlan.value.id && activePlan.value.id > 0) {
+      const updated = await erpService.updateCoursePlan(courseId, activePlan.value.id, planData);
+      coursePlansList.value[selectedPlanIndex.value] = updated;
+      plansFeedback.value = { text: "O'quv rejasi muvaffaqiyatli saqlandi!", type: 'success' };
+    } else {
+      const created = await erpService.createCoursePlan(courseId, planData);
+      coursePlansList.value[selectedPlanIndex.value] = created;
+      plansFeedback.value = { text: "Yangi o'quv rejasi muvaffaqiyatli yaratildi!", type: 'success' };
+    }
+
+    await loadData();
+    const refreshed = courses.value.find((c) => c.id === courseId);
+    if (refreshed) selectedCourseForPlans.value = refreshed;
+  } catch (err: any) {
+    plansFeedback.value = {
+      text: err.response?.data?.message || err.message || "Saqlashda xatolik yuz berdi",
+      type: 'error',
+    };
+  } finally {
+    plansSaving.value = false;
+  }
+}
+
+async function deleteActivePlan() {
+  if (!activePlan.value || !selectedCourseForPlans.value) return;
+  if (!confirm(`Haqiqatan ham "${activePlan.value.title}" o'quv rejasini o'chirmoqchimisiz?`)) return;
+
+  try {
+    if (activePlan.value.id && activePlan.value.id > 0) {
+      await erpService.deleteCoursePlan(selectedCourseForPlans.value.id, activePlan.value.id);
+    }
+    coursePlansList.value.splice(selectedPlanIndex.value, 1);
+    selectedPlanIndex.value = Math.max(0, coursePlansList.value.length - 1);
+    plansFeedback.value = { text: "O'quv rejasi o'chirildi", type: 'success' };
+    await loadData();
+  } catch (err: any) {
+    plansFeedback.value = {
+      text: err.response?.data?.message || err.message || "O'chirishda xatolik",
+      type: 'error',
+    };
   }
 }
 
@@ -672,18 +950,39 @@ async function handleConfirmAction() {
             </div>
 
             <!-- Description -->
-            <p class="text-xs text-slate-500 mt-1 mb-3.5 line-clamp-2 leading-relaxed">
+            <p class="text-xs text-slate-500 mt-1 mb-2.5 line-clamp-2 leading-relaxed">
               {{ c.description || 'Kurs tavsifi' }}
             </p>
+
+            <!-- Dars Rejalari (Curriculum Plans) Action Button -->
+            <div class="my-2.5 pt-2 border-t border-slate-200/70">
+              <button
+                type="button"
+                @click="openPlansModal(c)"
+                class="w-full inline-flex items-center justify-between px-3 py-2 rounded-xl bg-violet-50/90 hover:bg-violet-100 text-[#6D28D9] border border-violet-200/80 text-xs font-bold transition shadow-2xs cursor-pointer group"
+                title="Kursning o'quv rejalari va dars jadvallarini boshqarish"
+              >
+                <div class="flex items-center gap-2">
+                  <Layers class="h-4 w-4 text-[#6D28D9] group-hover:scale-110 transition-transform" />
+                  <span>Dars rejalari</span>
+                </div>
+                <span class="inline-flex items-center px-2 py-0.5 rounded-lg bg-white border border-violet-200 text-[#6D28D9] text-[11px] font-extrabold shadow-2xs">
+                  {{ c.plans?.length || 1 }} ta reja
+                </span>
+              </button>
+            </div>
           </div>
 
-          <!-- Bottom Chips Row: Duration, Months, Price, and Status Toggle -->
+          <!-- Bottom Chips Row: Duration, Months, Lessons, Price, and Status Toggle -->
           <div class="flex flex-wrap items-center gap-1.5 pt-1">
             <span class="inline-flex items-center px-2 py-0.5 rounded-md bg-slate-100 border border-slate-200/80 text-xs font-semibold text-slate-700 shadow-2xs">
               {{ (c as any).lessonDuration ? (String((c as any).lessonDuration).includes('min') ? (c as any).lessonDuration : (c as any).lessonDuration + ' min') : '60 min' }}
             </span>
             <span class="inline-flex items-center px-2 py-0.5 rounded-md bg-slate-100 border border-slate-200/80 text-xs font-semibold text-slate-700 shadow-2xs">
               {{ c.durationMonths }} oy
+            </span>
+            <span class="inline-flex items-center px-2 py-0.5 rounded-md bg-slate-100 border border-slate-200/80 text-xs font-semibold text-slate-700 shadow-2xs">
+              {{ c.totalLessons || (c.durationMonths * 12) }} dars
             </span>
             <span class="inline-flex items-center px-2 py-0.5 rounded-md bg-slate-100 border border-slate-200/80 text-xs font-bold font-mono text-slate-800 shadow-2xs tracking-tight">
               {{ c.price }}
@@ -1315,22 +1614,49 @@ async function handleConfirmAction() {
               </select>
             </div>
 
-            <!-- 3. Kurs davomiyligi (oylarda) -->
-            <div>
-              <label class="block text-sm font-bold text-slate-800 mb-2">Kurs davomiyligi (oylarda)</label>
-              <select
-                v-model="courseFormMonths"
-                class="w-full h-12 px-4.5 text-[15px] font-medium bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#6D28D9] focus:border-transparent text-slate-700 transition cursor-pointer"
-              >
-                <option :value="1">1 oy</option>
-                <option :value="2">2 oy</option>
-                <option :value="3">3 oy</option>
-                <option :value="4">4 oy</option>
-                <option :value="5">5 oy</option>
-                <option :value="6">6 oy</option>
-                <option :value="9">9 oy</option>
-                <option :value="12">12 oy</option>
-              </select>
+            <!-- 3. Kurs davomiyligi (oylarda) va Darslar soni -->
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label class="block text-sm font-bold text-slate-800 mb-2">Davomiyligi *</label>
+                <select
+                  v-model="courseFormMonths"
+                  class="w-full h-12 px-3 text-[15px] font-medium bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#6D28D9] focus:border-transparent text-slate-700 transition cursor-pointer"
+                >
+                  <option :value="1">1 oy</option>
+                  <option :value="2">2 oy</option>
+                  <option :value="3">3 oy</option>
+                  <option :value="4">4 oy</option>
+                  <option :value="5">5 oy</option>
+                  <option :value="6">6 oy</option>
+                  <option :value="9">9 oy</option>
+                  <option :value="12">12 oy</option>
+                </select>
+              </div>
+
+              <div>
+                <label class="block text-sm font-bold text-slate-800 mb-2">Oylik darslar *</label>
+                <input
+                  v-model.number="courseFormLessonsPerMonth"
+                  type="number"
+                  min="1"
+                  max="31"
+                  required
+                  placeholder="12"
+                  class="w-full h-12 px-3.5 text-[15px] font-medium bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#6D28D9] focus:border-transparent text-slate-800 transition"
+                />
+              </div>
+
+              <div>
+                <label class="block text-sm font-bold text-slate-800 mb-2">Jami darslar *</label>
+                <input
+                  v-model.number="courseFormTotalLessons"
+                  type="number"
+                  min="1"
+                  required
+                  placeholder="36"
+                  class="w-full h-12 px-3.5 text-[15px] font-bold bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#6D28D9] focus:border-transparent text-[#6D28D9] transition"
+                />
+              </div>
             </div>
 
             <!-- 4. Narx -->
@@ -1395,6 +1721,251 @@ async function handleConfirmAction() {
         </div>
       </div>
     </Transition>
+
+    <!-- ===================================================================== -->
+    <!-- MODAL: KURS DARS REJALARI (CURRICULUM PLANS & LESSON SCHEDULES)     -->
+    <!-- 1 ta kursda 1 nechta dars jadval shablonlari bo'lishi mumkin        -->
+    <!-- ===================================================================== -->
+    <Modal
+      :show="showPlansModal"
+      :title="`${selectedCourseForPlans?.name || 'Kurs'} — Dars Rejalari`"
+      max-width="2xl"
+      @close="closePlansModal"
+    >
+      <div class="space-y-4">
+        <!-- Top Info Header -->
+        <div class="p-3.5 rounded-2xl bg-violet-50/80 border border-violet-100 flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div class="space-y-0.5">
+            <div class="flex items-center gap-2">
+              <span class="font-extrabold text-slate-900 text-sm">{{ selectedCourseForPlans?.name }}</span>
+              <span class="px-2 py-0.5 rounded-md bg-white border border-violet-200 text-[#6D28D9] font-bold text-[11px]">
+                {{ selectedCourseForPlans?.durationMonths }} oy / {{ selectedCourseForPlans?.totalLessons || (selectedCourseForPlans?.durationMonths || 1) * 12 }} dars
+              </span>
+            </div>
+            <p class="text-slate-500 text-[11px]">
+              Bu yerda guruhlar ochilganda avtomatik biriktiriladigan dars jadval shablonlarini kiritasiz va boshqarasiz.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            @click="addNewPlan"
+            class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#6D28D9] hover:bg-[#5B21B6] text-white font-bold text-xs shadow-2xs transition cursor-pointer"
+          >
+            <Plus class="h-3.5 w-3.5" />
+            <span>Yangi reja qo'shish</span>
+          </button>
+        </div>
+
+        <!-- Alert / Feedback -->
+        <div
+          v-if="plansFeedback"
+          class="p-3 rounded-xl text-xs font-semibold flex items-center justify-between"
+          :class="plansFeedback.type === 'success' ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-rose-50 text-rose-800 border border-rose-200'"
+        >
+          <span>{{ plansFeedback.text }}</span>
+          <button @click="plansFeedback = null" class="text-slate-400 hover:text-slate-600 cursor-pointer">
+            <X class="h-3.5 w-3.5" />
+          </button>
+        </div>
+
+        <!-- Plans Tabs Switcher (if course has plans) -->
+        <div v-if="coursePlansList.length > 0" class="border-b border-slate-200 flex items-center gap-1.5 overflow-x-auto pb-1.5">
+          <button
+            v-for="(plan, pIdx) in coursePlansList"
+            :key="plan.id || pIdx"
+            type="button"
+            @click="selectedPlanIndex = pIdx"
+            class="px-3.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-2 border whitespace-nowrap"
+            :class="
+              selectedPlanIndex === pIdx
+                ? 'bg-[#6D28D9] text-white border-[#6D28D9] shadow-2xs'
+                : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
+            "
+          >
+            <Layers class="h-3.5 w-3.5" />
+            <span>{{ plan.title || `Reja #${pIdx + 1}` }}</span>
+            <span
+              v-if="plan.isDefault"
+              class="px-1.5 py-0.2 rounded text-[10px] font-extrabold"
+              :class="selectedPlanIndex === pIdx ? 'bg-white/20 text-white' : 'bg-amber-100 text-amber-800'"
+            >
+              Default
+            </span>
+            <span class="opacity-75 text-[11px]">({{ plan.lessons?.length || 0 }} dars)</span>
+          </button>
+        </div>
+
+        <!-- Selected Plan Details -->
+        <div v-if="activePlan" class="space-y-3.5">
+          <!-- Plan Meta Form (Title, Description, IsDefault, Template buttons) -->
+          <div class="grid grid-cols-1 sm:grid-cols-12 gap-3 p-3.5 rounded-xl border border-slate-200/90 bg-slate-50/60">
+            <div class="sm:col-span-6">
+              <label class="block text-xs font-bold text-slate-700 mb-1">O'quv reja nomi *</label>
+              <input
+                v-model="activePlan.title"
+                type="text"
+                placeholder="Standart o'quv dasturi (2026)..."
+                class="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#6D28D9] text-slate-800 font-semibold"
+              />
+            </div>
+
+            <div class="sm:col-span-6">
+              <label class="block text-xs font-bold text-slate-700 mb-1">Tavsif (ixtiyoriy)</label>
+              <input
+                v-model="activePlan.description"
+                type="text"
+                placeholder="Kurs dasturi tavsifi..."
+                class="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#6D28D9] text-slate-800"
+              />
+            </div>
+
+            <div class="sm:col-span-12 flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-200/60">
+              <label class="inline-flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-700">
+                <input
+                  type="checkbox"
+                  v-model="activePlan.isDefault"
+                  class="rounded text-[#6D28D9] focus:ring-[#6D28D9] h-4 w-4"
+                />
+                <span>Ushbu rejani yangi guruhlar uchun <strong>Birlamchi (Default)</strong> reja deb belgilash</span>
+              </label>
+
+              <div class="flex items-center gap-2">
+                <!-- Delete plan button if multiple plans -->
+                <button
+                  v-if="coursePlansList.length > 1"
+                  type="button"
+                  @click="deleteActivePlan"
+                  class="px-2.5 py-1 rounded-lg border border-rose-200 text-rose-600 hover:bg-rose-50 text-xs font-bold transition cursor-pointer"
+                  title="Ushbu o'quv rejani o'chirish"
+                >
+                  <Trash2 class="h-3.5 w-3.5 inline mr-1" />
+                  <span>O'chirish</span>
+                </button>
+
+                <!-- Quick Template Autocomplete -->
+                <div class="inline-flex items-center rounded-lg border border-violet-200 bg-white p-0.5 text-xs">
+                  <span class="px-2 text-[11px] text-slate-400 font-medium">Shablon:</span>
+                  <button
+                    type="button"
+                    @click="autoFillPlanTemplate(12)"
+                    class="px-2 py-0.5 rounded hover:bg-violet-50 text-[#6D28D9] font-bold cursor-pointer"
+                    title="12 ta dars shabloni kiritish"
+                  >
+                    12 dars
+                  </button>
+                  <button
+                    type="button"
+                    @click="autoFillPlanTemplate(24)"
+                    class="px-2 py-0.5 rounded hover:bg-violet-50 text-[#6D28D9] font-bold cursor-pointer"
+                    title="24 ta dars shabloni kiritish"
+                  >
+                    24 dars
+                  </button>
+                  <button
+                    type="button"
+                    @click="autoFillPlanTemplate(36)"
+                    class="px-2 py-0.5 rounded hover:bg-violet-50 text-[#6D28D9] font-bold cursor-pointer"
+                    title="36 ta dars shabloni kiritish"
+                  >
+                    36 dars
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Lessons List Table -->
+          <div class="rounded-xl border border-slate-200/90 overflow-hidden bg-white shadow-2xs">
+            <div class="p-3 bg-slate-50/80 border-b border-slate-100 flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <BookOpen class="h-4 w-4 text-[#6D28D9]" />
+                <span class="text-xs font-bold text-slate-900">
+                  Darslar Ro'yxati ({{ activePlan.lessons?.length || 0 }} ta dars)
+                </span>
+              </div>
+
+              <button
+                type="button"
+                @click="addLessonToActivePlan"
+                class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-violet-100 hover:bg-violet-200 text-[#6D28D9] text-xs font-bold transition cursor-pointer"
+              >
+                <Plus class="h-3 w-3" />
+                <span>+ Dars qo'shish</span>
+              </button>
+            </div>
+
+            <!-- Lessons Rows -->
+            <div class="max-h-72 overflow-y-auto divide-y divide-slate-100 p-2 space-y-1">
+              <div
+                v-if="!activePlan.lessons || activePlan.lessons.length === 0"
+                class="py-8 text-center text-xs text-slate-400"
+              >
+                Hozircha darslar kiritilmagan. Yuqoridagi "Shablon" yoki "+ Dars qo'shish" tugmasini bosing.
+              </div>
+
+              <div
+                v-for="(lesson, lIdx) in activePlan.lessons"
+                :key="lIdx"
+                class="p-2 rounded-lg hover:bg-slate-50/80 transition flex items-start gap-2.5"
+              >
+                <!-- Order Pill -->
+                <div class="h-7 w-8 shrink-0 rounded-lg bg-slate-100 border border-slate-200 text-slate-700 flex items-center justify-center text-xs font-extrabold mt-0.5">
+                  #{{ lesson.lessonOrder || lIdx + 1 }}
+                </div>
+
+                <!-- Topic & Description Inputs -->
+                <div class="flex-1 space-y-1">
+                  <input
+                    v-model="lesson.topic"
+                    type="text"
+                    required
+                    :placeholder="`${lIdx + 1}-dars mavzusi...`"
+                    class="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#6D28D9] text-slate-900 font-semibold"
+                  />
+                  <input
+                    v-model="lesson.description"
+                    type="text"
+                    placeholder="Mavzu tavsifi, amaliy topshiriq yoki material havolasi..."
+                    class="w-full px-2.5 py-1 text-[11px] bg-slate-50 border border-slate-200/70 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#6D28D9] text-slate-600"
+                  />
+                </div>
+
+                <!-- Delete Lesson Row Button -->
+                <button
+                  type="button"
+                  @click="removeLessonFromActivePlan(lIdx)"
+                  class="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition cursor-pointer mt-0.5"
+                  title="Darsni o'chirish"
+                >
+                  <Trash2 class="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Modal Footer: Save Plan Button -->
+          <div class="pt-3 border-t border-slate-100 flex items-center justify-end gap-3">
+            <button
+              type="button"
+              @click="closePlansModal"
+              class="px-4 py-2 rounded-xl border border-slate-200 text-slate-700 text-xs font-bold hover:bg-slate-50 transition cursor-pointer"
+            >
+              Yopish
+            </button>
+            <button
+              type="button"
+              @click="saveActivePlan"
+              :disabled="plansSaving"
+              class="inline-flex items-center gap-1.5 px-5 py-2 rounded-xl bg-[#6D28D9] hover:bg-[#5B21B6] text-white text-xs font-bold transition shadow-xs cursor-pointer disabled:opacity-60"
+            >
+              <Save class="h-3.5 w-3.5" />
+              <span>{{ plansSaving ? "Saqlanmoqda..." : "Rejani Saqlash" }}</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </Modal>
 
     <!-- ================= SLIDE-OVER DRAWER: XONA QO'SHISH / TAHRIRLASH (Matching Course Drawer) ================= -->
     <Transition

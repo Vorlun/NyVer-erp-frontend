@@ -23,6 +23,7 @@ import type {
   CreateTeacherHomeworkPayload,
   GradeSubmissionPayload,
   TeacherDashboardStats,
+  CoursePlan,
 } from '../types';
 import {
   initialUsers,
@@ -131,6 +132,11 @@ class ErpService {
   async getProfile() {
     const res = await apiClient.get('/auth/me');
     return unwrap<User>(res);
+  }
+
+  async changeTempPassword(newPassword: string) {
+    const res = await apiClient.patch('/auth/change-temp-password', { newPassword });
+    return unwrap<{ message: string; user: User }>(res);
   }
 
   // ============ USERS ============
@@ -353,6 +359,54 @@ class ErpService {
 
   async deleteCourseSyllabus(courseId: number, syllabusId: number) {
     const res = await apiClient.delete(`/courses/${courseId}/syllabus/${syllabusId}`);
+    return unwrap<{ message: string }>(res);
+  }
+
+  async batchSetCourseSyllabus(courseId: number, items: { lessonOrder: number; topic: string; description?: string }[]) {
+    const res = await apiClient.post(`/courses/${courseId}/syllabus/batch`, { items });
+    return unwrap<unknown[]>(res);
+  }
+
+  // ============ COURSE PLANS (Bir nechta o'quv rejalari) ============
+  async getCoursePlans(courseId: number) {
+    try {
+      const res = await apiClient.get(`/courses/${courseId}/plans`);
+      return unwrap<CoursePlan[]>(res);
+    } catch (err) {
+      console.warn("API getCoursePlans failed, returning empty list:", err);
+      return [];
+    }
+  }
+
+  async createCoursePlan(
+    courseId: number,
+    data: {
+      title: string;
+      description?: string;
+      isDefault?: boolean;
+      lessons?: { lessonOrder: number; topic: string; description?: string }[];
+    },
+  ) {
+    const res = await apiClient.post(`/courses/${courseId}/plans`, data);
+    return unwrap<CoursePlan>(res);
+  }
+
+  async updateCoursePlan(
+    courseId: number,
+    planId: number,
+    data: Partial<{
+      title: string;
+      description?: string;
+      isDefault?: boolean;
+      lessons?: { lessonOrder: number; topic: string; description?: string }[];
+    }>,
+  ) {
+    const res = await apiClient.patch(`/courses/${courseId}/plans/${planId}`, data);
+    return unwrap<CoursePlan>(res);
+  }
+
+  async deleteCoursePlan(courseId: number, planId: number) {
+    const res = await apiClient.delete(`/courses/${courseId}/plans/${planId}`);
     return unwrap<{ message: string }>(res);
   }
 
@@ -583,8 +637,13 @@ class ErpService {
     return unwrap<Attendance[]>(res);
   }
 
-  async bulkMarkAttendance(lessonId: number, records: Array<{ studentId: number; status: string; coinsEarned?: number; note?: string }>) {
-    const res = await apiClient.post('/attendance/bulk', { lessonId, records });
+  async bulkMarkAttendance(
+    lessonId: number,
+    records: Array<{ studentId: number; status: string; coinsEarned?: number; note?: string }>,
+    topic?: string,
+    description?: string,
+  ) {
+    const res = await apiClient.post('/attendance/bulk', { lessonId, records, topic, description });
     return unwrap<Attendance[]>(res);
   }
 
@@ -597,8 +656,18 @@ class ErpService {
     return this.getAttendances({ studentId });
   }
 
-  async saveAttendance(lessonId: number, records: Array<{ studentId: number; status: string; coinsEarned?: number; note?: string }>) {
-    return this.bulkMarkAttendance(lessonId, records);
+  async saveAttendance(
+    lessonId: number,
+    records: Array<{ studentId: number; status: string; coinsEarned?: number; note?: string }>,
+    topic?: string,
+    description?: string,
+  ) {
+    return this.bulkMarkAttendance(lessonId, records, topic, description);
+  }
+
+  async generateGroupLessons(groupId: number, planId?: number) {
+    const res = await apiClient.post(`/groups/${groupId}/generate-lessons`, { planId });
+    return unwrap<any>(res);
   }
 
   async getAttendanceReport(groupId: number) {
@@ -1090,6 +1159,10 @@ class ErpService {
       console.warn(`API getTeacherGroupDetail(${groupId}) failed:`, err);
       return null;
     }
+  }
+
+  async getTeacherGroup(groupId: number) {
+    return this.getTeacherGroupDetail(groupId);
   }
 
   async createTeacherLesson(groupId: number, data: CreateLessonTeacherPayload) {

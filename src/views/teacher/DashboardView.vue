@@ -21,6 +21,7 @@ import {
   AlertCircle,
   RefreshCw,
   TrendingUp,
+  CalendarCheck,
 } from 'lucide-vue-next';
 
 // State
@@ -558,6 +559,14 @@ function formatDate(dateStr?: string | null) {
                 </div>
 
                 <div class="flex items-center gap-1">
+                  <router-link
+                    :to="`/teacher/attendance?groupId=${group.id}`"
+                    @click.stop
+                    class="opacity-80 group-hover/item:opacity-100 p-1.5 rounded-lg text-slate-500 hover:text-[#6D28D9] hover:bg-violet-50 transition"
+                    title="Davomat olish"
+                  >
+                    <CalendarCheck class="w-4 h-4" />
+                  </router-link>
                   <button
                     @click.stop="openAddHomeworkModal(group.id)"
                     class="opacity-80 group-hover/item:opacity-100 p-1.5 rounded-lg text-slate-500 hover:text-[#BC000D] hover:bg-red-50 transition"

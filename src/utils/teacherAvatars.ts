@@ -35,6 +35,9 @@ export function getTeacherPhoto(teacher: { id?: number; firstName?: string; last
   if (email.includes('malika') || name.includes('malika') || email.includes('design')) {
     return 'https://images.unsplash.com/photo-1580489944761-15a19d654956?auto=format&fit=crop&w=800&h=1000&crop=faces&q=85';
   }
+  if (email.includes('oybek') || name.includes('oybek') || email.includes('one.humoyun')) {
+    return 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&w=800&h=1000&crop=faces&q=85';
+  }
   if (email.includes('rustam') || name.includes('rustam') || email.includes('teacher')) {
     return 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=800&h=1000&crop=faces&q=85';
   }

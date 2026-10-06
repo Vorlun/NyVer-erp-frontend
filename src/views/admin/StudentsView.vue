@@ -4,22 +4,15 @@ import { erpService } from '../../api/erpService';
 import type { User, Group } from '../../types';
 import Modal from '../../components/ui/Modal.vue';
 import {
-  Search,
-  Archive,
+  SlidersHorizontal,
   Edit2,
   Trash2,
-  RotateCcw,
-  Coins,
-  ChevronDown,
   Eye,
-  LayoutGrid,
-  List,
-  Phone,
-  Mail,
-  MapPin,
   Plus,
-  GraduationCap,
   X,
+  CheckCircle,
+  AlertCircle,
+  RotateCcw,
 } from 'lucide-vue-next';
 
 const users = ref<User[]>([]);
@@ -28,59 +21,51 @@ const loading = ref(false);
 
 const searchQuery = ref('');
 const activeTab = ref<'ACTIVE' | 'ARCHIVE'>('ACTIVE');
-const viewMode = ref<'grid' | 'table'>('grid');
 const selectedGroupFilter = ref<string>('ALL');
-const sortOrder = ref<'asc' | 'desc'>('asc');
+const showFilterPopover = ref(false);
+const sortAsc = ref(true);
 
 // Selected checkboxes
 const selectedIds = ref<number[]>([]);
 
 // Pagination
 const currentPage = ref(1);
-const itemsPerPage = computed(() => (viewMode.value === 'grid' ? 12 : 10));
+const itemsPerPage = 10;
 
-// Avatar gradients for students
-const avatarGradients = [
-  'from-violet-600 to-indigo-600 text-white',
-  'from-blue-600 to-cyan-600 text-white',
-  'from-emerald-600 to-teal-600 text-white',
-  'from-amber-500 to-orange-600 text-white',
-  'from-rose-500 to-pink-600 text-white',
-  'from-fuchsia-600 to-purple-700 text-white',
-  'from-teal-500 to-emerald-700 text-white',
-  'from-indigo-500 to-purple-600 text-white',
-];
+// Drawer state (Talaba qo'shish / tahrirlash)
+const isDrawerOpen = ref(false);
+const isEditing = ref(false);
+const editingStudentId = ref<number | null>(null);
 
-function getAvatarGradient(id: number): string {
-  return avatarGradients[id % avatarGradients.length];
-}
+const drawerPhone = ref('+998');
+const drawerEmail = ref('');
+const drawerFio = ref('');
+const drawerBirthDate = ref('');
+const drawerAddress = ref('');
+const drawerPassword = ref('');
+const drawerGroupId = ref<number | string>('');
 
-// Create Student Modal
-const showCreateModal = ref(false);
-const formFirstName = ref('');
-const formLastName = ref('');
-const formPhone = ref('+998');
-const formEmail = ref('');
-const formBirthDate = ref('');
-const formAddress = ref('');
-const formPassword = ref('123456');
-const formGroupId = ref<number | string>('');
-const formError = ref('');
+const drawerError = ref('');
 const isSubmitting = ref(false);
 
-// Edit Student Modal
-const showEditModal = ref(false);
-const editStudentId = ref<number | null>(null);
-const editFirstName = ref('');
-const editLastName = ref('');
-const editPhone = ref('');
-const editEmail = ref('');
-const editAddress = ref('');
-const editBirthDate = ref('');
+// Toast message
+const toastMessage = ref('');
+const toastType = ref<'success' | 'error'>('success');
+function showToast(msg: string, type: 'success' | 'error' = 'success') {
+  toastMessage.value = msg;
+  toastType.value = type;
+  setTimeout(() => {
+    toastMessage.value = '';
+  }, 4500);
+}
+
+// Student View Detail Modal
+const showViewModal = ref(false);
+const viewingStudent = ref<User | null>(null);
 
 // Coins Modal
 const showCoinModal = ref(false);
-const selectedStudent = ref<User | null>(null);
+const selectedStudentForCoins = ref<User | null>(null);
 const coinAmount = ref(10);
 const coinReason = ref('Darsdagi faollik uchun');
 
@@ -88,7 +73,7 @@ async function loadData() {
   loading.value = true;
   try {
     const [usersRes, groupsRes] = await Promise.allSettled([
-      erpService.getUsers({ limit: 100 }),
+      erpService.getUsers({ limit: 150 }),
       erpService.getGroups(),
     ]);
 
@@ -116,74 +101,101 @@ const studentsList = computed(() => {
   return users.value.filter((u) => u.role === 'STUDENT');
 });
 
-// Map student ID to enrolled groups as array
-function getStudentGroupsList(studentId: number): string[] {
-  const user = users.value.find((u) => u.id === studentId);
-  if (user && (user as any).studentEnrollments && (user as any).studentEnrollments.length > 0) {
-    const names = (user as any).studentEnrollments
+// Group lookup helper
+function getStudentGroupNames(student: User): string {
+  if ((student as any).studentEnrollments && (student as any).studentEnrollments.length > 0) {
+    const names = (student as any).studentEnrollments
       .map((e: any) => e.group?.name)
       .filter(Boolean);
-    if (names.length > 0) return names;
+    if (names.length > 0) return names.join(', ');
   }
 
   const studentGroups = groups.value.filter((g) => {
     return (g as any).students?.some(
-      (s: any) => s.studentId === studentId || s.id === studentId || s.student?.id === studentId
+      (s: any) => s.studentId === student.id || s.id === student.id || s.student?.id === student.id
     );
   });
   if (studentGroups.length > 0) {
-    return studentGroups.map((g) => g.name);
+    return studentGroups.map((g) => g.name).join(', ');
   }
-  return [];
+  return '-';
 }
 
-// Map student ID to enrolled groups string
-function getStudentGroups(studentId: number): string {
-  const list = getStudentGroupsList(studentId);
-  return list.length > 0 ? list.join(', ') : '-';
-}
-
-// Filtered students
-const filteredStudents = computed(() => {
-  return studentsList.value.filter((s) => {
-    const isArchived = s.status === 'ARCHIVED';
-    if (activeTab.value === 'ACTIVE' && isArchived) return false;
-    if (activeTab.value === 'ARCHIVE' && !isArchived) return false;
-
-    const q = searchQuery.value.trim().toLowerCase();
-    const fullName = `${s.firstName} ${s.lastName}`.toLowerCase();
-    const matchesSearch =
-      !q ||
-      fullName.includes(q) ||
-      s.phone.includes(q) ||
-      (s.email && s.email.toLowerCase().includes(q)) ||
-      (s.address && s.address.toLowerCase().includes(q));
-
-    if (selectedGroupFilter.value !== 'ALL') {
-      const gStr = getStudentGroups(s.id);
-      if (!gStr.includes(selectedGroupFilter.value)) return false;
-    }
-
-    return matchesSearch;
-  }).sort((a, b) => {
-    const nameA = `${a.firstName} ${a.lastName}`;
-    const nameB = `${b.firstName} ${b.lastName}`;
-    return sortOrder.value === 'asc'
-      ? nameA.localeCompare(nameB)
-      : nameB.localeCompare(nameA);
+function getStudentGroupId(student: User): number | string {
+  if ((student as any).studentEnrollments && (student as any).studentEnrollments.length > 0) {
+    return (student as any).studentEnrollments[0].group?.id || '';
+  }
+  const g = groups.value.find((grp) => {
+    return (grp as any).students?.some(
+      (s: any) => s.studentId === student.id || s.id === student.id || s.student?.id === student.id
+    );
   });
+  return g?.id || '';
+}
+
+// Date formatting: DD.MM.YYYY
+function formatDate(d?: string | Date | null): string {
+  if (!d) return '-';
+  try {
+    const date = new Date(d);
+    if (isNaN(date.getTime())) return String(d);
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const year = date.getFullYear();
+    return `${day}.${month}.${year}`;
+  } catch {
+    return '-';
+  }
+}
+
+// Filtered & Sorted students
+const filteredStudents = computed(() => {
+  return studentsList.value
+    .filter((s) => {
+      const isArchived = s.status === 'ARCHIVED';
+      if (activeTab.value === 'ACTIVE' && isArchived) return false;
+      if (activeTab.value === 'ARCHIVE' && !isArchived) return false;
+
+      const q = searchQuery.value.trim().toLowerCase();
+      const fullName = `${s.firstName} ${s.lastName}`.toLowerCase();
+      const matchesSearch =
+        !q ||
+        fullName.includes(q) ||
+        s.phone.includes(q) ||
+        (s.email && s.email.toLowerCase().includes(q)) ||
+        (s.address && s.address.toLowerCase().includes(q));
+
+      if (selectedGroupFilter.value !== 'ALL') {
+        const gName = getStudentGroupNames(s);
+        if (!gName.includes(selectedGroupFilter.value)) return false;
+      }
+
+      return matchesSearch;
+    })
+    .sort((a, b) => {
+      const nameA = `${a.firstName} ${a.lastName}`;
+      const nameB = `${b.firstName} ${b.lastName}`;
+      return sortAsc.value
+        ? nameA.localeCompare(nameB)
+        : nameB.localeCompare(nameA);
+    });
 });
 
-const archiveCount = computed(() => studentsList.value.filter((s) => s.status === 'ARCHIVED').length);
+const archiveCount = computed(
+  () => studentsList.value.filter((s) => s.status === 'ARCHIVED').length
+);
 
-// Pagination
-const totalPages = computed(() => Math.max(1, Math.ceil(filteredStudents.value.length / itemsPerPage.value)));
+// Pagination calculations
+const totalPages = computed(() =>
+  Math.max(1, Math.ceil(filteredStudents.value.length / itemsPerPage))
+);
+
 const paginatedStudents = computed(() => {
-  const start = (currentPage.value - 1) * itemsPerPage.value;
-  return filteredStudents.value.slice(start, start + itemsPerPage.value);
+  const start = (currentPage.value - 1) * itemsPerPage;
+  return filteredStudents.value.slice(start, start + itemsPerPage);
 });
 
-// Checkbox select all
+// Checkboxes selection
 const isAllSelected = computed(() => {
   return (
     paginatedStudents.value.length > 0 &&
@@ -209,133 +221,180 @@ function toggleSelect(id: number) {
 }
 
 function toggleSort() {
-  sortOrder.value = sortOrder.value === 'asc' ? 'desc' : 'asc';
+  sortAsc.value = !sortAsc.value;
 }
 
-// Archive / Delete action
-async function handleArchiveStudent(student: User) {
-  if (!confirm(`Haqiqatan ham ${student.firstName} ${student.lastName} talabasini arxivlamoqchimisiz?`)) return;
+// Drawer open/close
+function openCreateDrawer() {
+  isEditing.value = false;
+  editingStudentId.value = null;
+  drawerPhone.value = '+998';
+  drawerEmail.value = '';
+  drawerFio.value = '';
+  drawerBirthDate.value = '';
+  drawerAddress.value = '';
+  drawerPassword.value = '';
+  drawerGroupId.value = groups.value[0]?.id || '';
+  drawerError.value = '';
+  isDrawerOpen.value = true;
+}
+
+function openEditStudent(student: User) {
+  isEditing.value = true;
+  editingStudentId.value = student.id;
+  drawerPhone.value = student.phone || '+998';
+  drawerEmail.value = student.email || '';
+  drawerFio.value = `${student.firstName} ${student.lastName}`.trim();
+  drawerBirthDate.value = student.birthDate
+    ? new Date(student.birthDate).toISOString().slice(0, 10)
+    : '';
+  drawerAddress.value = student.address || '';
+  drawerPassword.value = '';
+  drawerGroupId.value = getStudentGroupId(student);
+  drawerError.value = '';
+  isDrawerOpen.value = true;
+}
+
+function closeDrawer() {
+  isDrawerOpen.value = false;
+  drawerError.value = '';
+}
+
+// Save Student (Create or Edit)
+async function handleSaveStudent() {
+  if (!drawerPhone.value || !drawerFio.value.trim()) {
+    drawerError.value = 'Iltimos, telefon raqami va talaba FIO sini kiriting.';
+    return;
+  }
+
+  isSubmitting.value = true;
+  drawerError.value = '';
+
+  const trimmedFio = drawerFio.value.trim();
+  const spaceIdx = trimmedFio.indexOf(' ');
+  let firstName = trimmedFio;
+  let lastName = '';
+  if (spaceIdx !== -1) {
+    firstName = trimmedFio.substring(0, spaceIdx).trim();
+    lastName = trimmedFio.substring(spaceIdx + 1).trim();
+  }
+
   try {
-    await erpService.changeUserStatus(student.id, 'ARCHIVED');
+    if (isEditing.value && editingStudentId.value) {
+      await erpService.updateUser(editingStudentId.value, {
+        firstName,
+        lastName,
+        phone: drawerPhone.value.trim(),
+        email: drawerEmail.value.trim() || undefined,
+        address: drawerAddress.value.trim() || undefined,
+        birthDate: drawerBirthDate.value ? drawerBirthDate.value : undefined,
+      });
+
+      if (drawerGroupId.value) {
+        try {
+          await erpService.addStudentToGroup(Number(drawerGroupId.value), editingStudentId.value);
+        } catch (gErr) {
+          console.warn('Guruhga biriktirish:', gErr);
+        }
+      }
+
+      showToast("Talaba ma'lumotlari muvaffaqiyatli yangilandi!");
+    } else {
+      const created = await erpService.createUser({
+        firstName,
+        lastName,
+        role: 'STUDENT',
+        phone: drawerPhone.value.trim(),
+        email: drawerEmail.value.trim() || undefined,
+        password: drawerPassword.value.trim() || undefined,
+        address: drawerAddress.value.trim() || undefined,
+        birthDate: drawerBirthDate.value ? drawerBirthDate.value : undefined,
+      });
+
+      if (drawerGroupId.value && created && created.id) {
+        try {
+          await erpService.addStudentToGroup(Number(drawerGroupId.value), created.id);
+        } catch (gErr) {
+          console.warn('Guruhga biriktirish:', gErr);
+        }
+      }
+
+      const emailNote = drawerEmail.value.trim()
+        ? " Kirish rekvizitlari va 1 martalik parol student emailiga yuborildi."
+        : "";
+      showToast(`Talaba muvaffaqiyatli yaratildi!${emailNote}`);
+    }
+
+    closeDrawer();
     await loadData();
-  } catch (err) {
-    console.error('Arxivlashda xatolik:', err);
+  } catch (err: any) {
+    drawerError.value =
+      err?.response?.data?.message || err.message || 'Xatolik yuz berdi. Qayta urinib ko\'ring.';
+  } finally {
+    isSubmitting.value = false;
   }
 }
 
+// Delete student
+async function handleDeleteStudent(student: User) {
+  if (
+    !confirm(
+      `Haqiqatan ham ${student.firstName} ${student.lastName} talabasini o'chirmoqchimisiz?`
+    )
+  )
+    return;
+
+  try {
+    await erpService.deleteUser(student.id);
+    showToast(`${student.firstName} ${student.lastName} muvaffaqiyatli o'chirildi!`);
+    await loadData();
+  } catch (err: any) {
+    try {
+      await erpService.changeUserStatus(student.id, 'ARCHIVED');
+      showToast(`${student.firstName} arxivlandi!`);
+      await loadData();
+    } catch (e: any) {
+      alert("O'chirishda xatolik yuz berdi: " + (e.message || ''));
+    }
+  }
+}
+
+// Restore student from archive
 async function handleRestoreStudent(student: User) {
   try {
     await erpService.changeUserStatus(student.id, 'ACTIVE');
+    showToast(`${student.firstName} talabasi faol holatga qaytarildi!`);
     await loadData();
   } catch (err) {
     console.error('Tiklashda xatolik:', err);
   }
 }
 
-async function handlePermanentDelete(student: User) {
-  if (!confirm(`DIQQAT! ${student.firstName} ${student.lastName} butunlay o'chiriladi. Rozimisiz?`)) return;
-  try {
-    await erpService.deleteUser(student.id);
-    await loadData();
-  } catch (err) {
-    console.error("O'chirishda xatolik:", err);
-  }
-}
-
-// Create student
-function openCreateModal() {
-  formFirstName.value = '';
-  formLastName.value = '';
-  formPhone.value = '+998';
-  formEmail.value = '';
-  formBirthDate.value = '';
-  formAddress.value = '';
-  formPassword.value = '123456';
-  formGroupId.value = groups.value[0]?.id || '';
-  formError.value = '';
-  showCreateModal.value = true;
-}
-
-async function handleCreateStudent() {
-  if (!formFirstName.value || !formLastName.value || !formPhone.value) {
-    formError.value = 'Iltimos, barcha majburiy maydonlarni to\'ldiring.';
-    return;
-  }
-  isSubmitting.value = true;
-  try {
-    const student = await erpService.createUser({
-      firstName: formFirstName.value.trim(),
-      lastName: formLastName.value.trim(),
-      role: 'STUDENT',
-      phone: formPhone.value.trim(),
-      email: formEmail.value.trim() || undefined,
-      password: formPassword.value.trim() || '123456',
-      address: formAddress.value.trim() || undefined,
-    });
-
-    if (formGroupId.value && student && student.id) {
-      try {
-        await erpService.addStudentToGroup(Number(formGroupId.value), student.id);
-      } catch (gErr) {
-        console.warn('Guruhga biriktirishda xatolik:', gErr);
-      }
-    }
-
-    showCreateModal.value = false;
-    await loadData();
-  } catch (err: any) {
-    formError.value = err.response?.data?.message || err.message || 'Xatolik yuz berdi';
-  } finally {
-    isSubmitting.value = false;
-  }
-}
-
-// Edit student
-function openEditModal(student: User) {
-  editStudentId.value = student.id;
-  editFirstName.value = student.firstName;
-  editLastName.value = student.lastName;
-  editPhone.value = student.phone;
-  editEmail.value = student.email || '';
-  editAddress.value = student.address || '';
-  editBirthDate.value = student.birthDate ? new Date(student.birthDate).toISOString().slice(0, 10) : '';
-  showEditModal.value = true;
-}
-
-async function handleEditStudent() {
-  if (!editStudentId.value || !editFirstName.value || !editLastName.value || !editPhone.value) return;
-  isSubmitting.value = true;
-  try {
-    await erpService.updateUser(editStudentId.value, {
-      firstName: editFirstName.value.trim(),
-      lastName: editLastName.value.trim(),
-      phone: editPhone.value.trim(),
-      email: editEmail.value.trim() || undefined,
-      address: editAddress.value.trim() || undefined,
-    });
-    showEditModal.value = false;
-    await loadData();
-  } catch (err: any) {
-    console.error('Tahrirlashda xatolik:', err);
-  } finally {
-    isSubmitting.value = false;
-  }
+// View student details
+function openViewStudent(student: User) {
+  viewingStudent.value = student;
+  showViewModal.value = true;
 }
 
 // Coins modal
 function openCoinModal(student: User) {
-  selectedStudent.value = student;
+  selectedStudentForCoins.value = student;
   coinAmount.value = 10;
   coinReason.value = 'Darsdagi faollik uchun';
   showCoinModal.value = true;
 }
 
 async function handleAdjustCoins() {
-  if (!selectedStudent.value) return;
+  if (!selectedStudentForCoins.value) return;
   isSubmitting.value = true;
   try {
-    await erpService.updateUserCoins(selectedStudent.value.id, Number(coinAmount.value), coinReason.value);
+    await erpService.updateUserCoins(
+      selectedStudentForCoins.value.id,
+      Number(coinAmount.value),
+      coinReason.value
+    );
     showCoinModal.value = false;
+    showToast("Student tangalar balansi muvaffaqiyatli yangilandi!");
     await loadData();
   } catch (err) {
     console.error('Tangalarni yangilashda xatolik:', err);
@@ -346,44 +405,64 @@ async function handleAdjustCoins() {
 </script>
 
 <template>
-  <div class="space-y-6">
-    <!-- 1. Top Header: Minimalist & Clean -->
-    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-      <div class="flex items-center gap-3">
-        <h1 class="text-2xl sm:text-3xl font-black tracking-tight text-slate-900">
+  <div class="space-y-5">
+    <!-- Toast notification -->
+    <transition
+      enter-active-class="transform transition ease-out duration-300"
+      enter-from-class="translate-y-2 opacity-0 sm:translate-y-0 sm:translate-x-2"
+      enter-to-class="translate-y-0 opacity-100 sm:translate-x-0"
+      leave-active-class="transition ease-in duration-200"
+      leave-from-class="opacity-100"
+      leave-to-class="opacity-0"
+    >
+      <div
+        v-if="toastMessage"
+        class="fixed top-6 right-6 z-50 flex items-center gap-3 px-5 py-3.5 rounded-2xl shadow-xl border text-sm font-semibold"
+        :class="
+          toastType === 'success'
+            ? 'bg-white border-violet-200 text-slate-800 shadow-violet-500/10'
+            : 'bg-white border-rose-200 text-rose-800 shadow-rose-500/10'
+        "
+      >
+        <CheckCircle v-if="toastType === 'success'" class="w-5 h-5 text-emerald-600 shrink-0" />
+        <AlertCircle v-else class="w-5 h-5 text-rose-600 shrink-0" />
+        <span>{{ toastMessage }}</span>
+      </div>
+    </transition>
+
+    <!-- 1. Top Header (Matching Screenshot 2) -->
+    <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+      <div>
+        <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">
           Talabalar
         </h1>
-        <span
-          class="px-2.5 py-1 text-xs font-bold rounded-full border shadow-2xs"
-          :class="activeTab === 'ACTIVE' ? 'bg-violet-50 text-[#6D28D9] border-violet-150' : 'bg-amber-50 text-amber-700 border-amber-200'"
-        >
-          {{ activeTab === 'ACTIVE' ? `${filteredStudents.length} nafar faol` : `${archiveCount} nafar arxivda` }}
-        </span>
+        <p class="text-xs sm:text-sm text-slate-500 mt-1 max-w-3xl">
+          Ushbu sahifada siz Talabalar ro'yxatini va ularning ma'lumotlarini topasiz. Har bir Talaba ismi, fanlari va aloqa ma'lumotlari keltirilgan.
+        </p>
       </div>
 
-      <!-- Action Button -->
+      <!-- Add Student Purple Button -->
       <button
-        @click="openCreateModal"
+        @click="openCreateDrawer"
         type="button"
-        class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#6D28D9] hover:bg-[#5B21B6] active:bg-[#4C1D95] text-white font-bold text-xs sm:text-sm transition-all shadow-xs cursor-pointer shrink-0 self-start sm:self-auto hover:shadow-md active:scale-98"
+        class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#6D28D9] hover:bg-[#5B21B6] active:bg-[#4C1D95] text-white font-semibold text-xs sm:text-sm transition-all shadow-xs cursor-pointer shrink-0 self-start hover:shadow-md active:scale-98"
       >
         <Plus class="h-4 w-4" />
-        <span>Yangi talaba qo'shish</span>
+        <span>Talaba qo'shish</span>
       </button>
     </div>
 
-    <!-- 2. Controls & Filter Toolbar -->
-    <div class="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-white p-2.5 sm:p-3 rounded-2xl border border-slate-200/80 shadow-2xs">
-      <!-- Left: Search Bar & Group Filter -->
-      <div class="flex flex-col sm:flex-row sm:items-center gap-2.5 flex-1">
+    <!-- 2. Main White Container (Matching Screenshot 2) -->
+    <div class="bg-white rounded-2xl border border-slate-200/90 shadow-2xs overflow-hidden">
+      <!-- Toolbar: Search on Left, Filters & Arxiv on Right -->
+      <div class="p-3 sm:p-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <!-- Search -->
-        <div class="relative flex-1 max-w-md">
-          <Search class="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
+        <div class="relative w-full sm:w-64">
           <input
             v-model="searchQuery"
             type="text"
-            placeholder="Ism, telefon, email yoki manzil bo'yicha qidirish..."
-            class="w-full pl-9 pr-8 py-2 text-xs bg-slate-50 hover:bg-slate-100/60 focus:bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#6D28D9] placeholder:text-slate-400 transition font-medium"
+            placeholder="Search"
+            class="w-full bg-slate-50 hover:bg-slate-100/70 focus:bg-white border border-slate-200 rounded-xl px-3.5 py-1.5 text-xs sm:text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#6D28D9] transition font-medium"
           />
           <button
             v-if="searchQuery"
@@ -395,279 +474,96 @@ async function handleAdjustCoins() {
           </button>
         </div>
 
-        <!-- Group Select Filter -->
-        <div class="relative w-full sm:w-56">
-          <select
-            v-model="selectedGroupFilter"
-            class="w-full pl-3 pr-8 py-2 text-xs bg-slate-50 hover:bg-slate-100/60 focus:bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#6D28D9] text-slate-700 font-semibold cursor-pointer transition appearance-none"
-          >
-            <option value="ALL">Barcha guruhlar</option>
-            <option v-for="g in groups" :key="g.id" :value="g.name">
-              {{ g.name }}
-            </option>
-          </select>
-          <ChevronDown class="absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
-        </div>
-      </div>
-
-      <!-- Right: View Switcher (Grid/Table) & Status Filter (Active/Archive) -->
-      <div class="flex items-center gap-2 self-end sm:self-auto shrink-0">
-        <!-- Active / Archive Switcher -->
-        <div class="inline-flex items-center bg-slate-100 p-1 rounded-xl text-xs font-semibold">
+        <!-- Right Buttons: Filters & Arxiv -->
+        <div class="relative flex items-center gap-2.5 self-end sm:self-auto">
+          <!-- Filters Button -->
           <button
-            @click="activeTab = 'ACTIVE'"
+            @click="showFilterPopover = !showFilterPopover"
             type="button"
-            class="px-3 py-1.5 rounded-lg transition cursor-pointer"
-            :class="activeTab === 'ACTIVE' ? 'bg-white text-slate-900 shadow-2xs font-bold' : 'text-slate-500 hover:text-slate-900'"
+            class="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border border-slate-200 text-xs sm:text-sm font-semibold text-slate-700 bg-white hover:bg-slate-50 transition cursor-pointer shadow-2xs"
+            :class="selectedGroupFilter !== 'ALL' ? 'border-[#6D28D9] text-[#6D28D9] bg-violet-50/50' : ''"
           >
-            Faol
+            <SlidersHorizontal class="h-3.5 w-3.5 text-slate-500" />
+            <span>Filters</span>
           </button>
-          <button
-            @click="activeTab = 'ARCHIVE'"
-            type="button"
-            class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition cursor-pointer"
-            :class="activeTab === 'ARCHIVE' ? 'bg-amber-600 text-white shadow-2xs font-bold' : 'text-slate-500 hover:text-slate-900'"
+
+          <!-- Filter Popover -->
+          <div
+            v-if="showFilterPopover"
+            class="absolute right-0 top-11 w-64 bg-white border border-slate-200 rounded-2xl shadow-xl p-4 z-30 space-y-3"
           >
-            <Archive class="h-3.5 w-3.5" />
+            <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+              <span class="text-xs font-bold text-slate-800">Filtrlar</span>
+              <button
+                @click="showFilterPopover = false"
+                class="text-slate-400 hover:text-slate-600 p-0.5"
+              >
+                <X class="h-3.5 w-3.5" />
+              </button>
+            </div>
+
+            <div>
+              <label class="block text-[11px] font-bold text-slate-600 mb-1">Guruh bo'yicha</label>
+              <select
+                v-model="selectedGroupFilter"
+                class="w-full text-xs px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-700 focus:outline-none focus:ring-1 focus:ring-[#6D28D9]"
+              >
+                <option value="ALL">Barcha guruhlar</option>
+                <option v-for="g in groups" :key="g.id" :value="g.name">
+                  {{ g.name }}
+                </option>
+              </select>
+            </div>
+
+            <div class="pt-1 flex items-center justify-between">
+              <button
+                @click="selectedGroupFilter = 'ALL'"
+                type="button"
+                class="text-[11px] font-bold text-slate-500 hover:text-slate-800"
+              >
+                Tozalash
+              </button>
+              <button
+                @click="showFilterPopover = false"
+                type="button"
+                class="px-3 py-1 bg-[#6D28D9] text-white text-[11px] font-bold rounded-lg hover:bg-[#5B21B6]"
+              >
+                Qo'llash
+              </button>
+            </div>
+          </div>
+
+          <!-- Arxiv Button -->
+          <button
+            @click="activeTab = activeTab === 'ACTIVE' ? 'ARCHIVE' : 'ACTIVE'"
+            type="button"
+            class="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border border-slate-200 text-xs sm:text-sm font-semibold text-slate-700 bg-white hover:bg-slate-50 transition cursor-pointer shadow-2xs"
+            :class="activeTab === 'ARCHIVE' ? 'bg-[#6D28D9] text-white border-[#6D28D9]' : ''"
+          >
             <span>Arxiv</span>
             <span
               v-if="archiveCount > 0"
-              class="px-1.5 py-0.2 rounded-full text-[10px]"
-              :class="activeTab === 'ARCHIVE' ? 'bg-amber-800 text-white' : 'bg-slate-200 text-slate-700'"
+              class="px-1.5 py-0.2 rounded-full text-[10px] font-bold"
+              :class="activeTab === 'ARCHIVE' ? 'bg-white text-[#6D28D9]' : 'bg-slate-100 text-slate-600'"
             >
               {{ archiveCount }}
             </span>
           </button>
         </div>
-
-        <!-- Grid / Table View Switcher -->
-        <div class="inline-flex items-center bg-slate-100 p-1 rounded-xl">
-          <button
-            @click="viewMode = 'grid'"
-            type="button"
-            class="p-1.5 rounded-lg transition cursor-pointer"
-            :class="viewMode === 'grid' ? 'bg-white text-[#6D28D9] shadow-2xs' : 'text-slate-400 hover:text-slate-700'"
-            title="Karta ko'rinishi (Kreativ grid)"
-          >
-            <LayoutGrid class="h-4 w-4" />
-          </button>
-          <button
-            @click="viewMode = 'table'"
-            type="button"
-            class="p-1.5 rounded-lg transition cursor-pointer"
-            :class="viewMode === 'table' ? 'bg-white text-[#6D28D9] shadow-2xs' : 'text-slate-400 hover:text-slate-700'"
-            title="Jadval ko'rinishi"
-          >
-            <List class="h-4 w-4" />
-          </button>
-        </div>
       </div>
-    </div>
 
-    <!-- Active State Notice if Viewing Arxiv -->
-    <div
-      v-if="activeTab === 'ARCHIVE'"
-      class="p-3.5 bg-amber-50 border border-amber-200/90 rounded-2xl text-xs text-amber-900 flex items-center justify-between shadow-2xs"
-    >
-      <div class="flex items-center gap-2.5">
-        <Archive class="h-4 w-4 text-amber-600 shrink-0" />
-        <span>Siz hozirda <strong>Arxivlangan talabalar</strong> ro'yxatidasiz. O'chirilgan talabalar shu yerda saqlanadi.</span>
+      <!-- Loading State -->
+      <div v-if="loading" class="py-20 text-center space-y-3">
+        <div class="inline-block h-8 w-8 animate-spin rounded-full border-3 border-solid border-[#6D28D9] border-r-transparent"></div>
+        <p class="text-xs font-medium text-slate-500">Talabalar ma'lumotlari yuklanmoqda...</p>
       </div>
-      <button
-        @click="activeTab = 'ACTIVE'"
-        class="text-xs font-bold text-amber-900 hover:underline cursor-pointer ml-3 shrink-0"
-      >
-        Faol talabalarga qaytish →
-      </button>
-    </div>
 
-    <!-- Loading State -->
-    <div v-if="loading" class="py-20 text-center space-y-3">
-      <div class="inline-block h-8 w-8 animate-spin rounded-full border-3 border-solid border-[#6D28D9] border-r-transparent"></div>
-      <p class="text-xs font-medium text-slate-500">Talabalar ma'lumotlari yuklanmoqda...</p>
-    </div>
-
-    <!-- Empty State -->
-    <div
-      v-else-if="filteredStudents.length === 0"
-      class="py-16 px-4 bg-white rounded-2xl border border-dashed border-slate-200 text-center space-y-3"
-    >
-      <div class="h-12 w-12 rounded-2xl bg-violet-50 text-[#6D28D9] mx-auto flex items-center justify-center">
-        <GraduationCap class="h-6 w-6" />
-      </div>
-      <h3 class="text-sm font-bold text-slate-800">
-        {{ activeTab === 'ARCHIVE' ? 'Arxivda talabalar mavjud emas' : 'Talabalar topilmadi' }}
-      </h3>
-      <p class="text-xs text-slate-400 max-w-sm mx-auto">
-        {{ searchQuery || selectedGroupFilter !== 'ALL' ? 'Qidiruv shartlariga mos keluvchi talaba topilmadi. Qidiruvni tozalab ko\'ring.' : 'Tizimda hozircha talabalar mavjud emas.' }}
-      </p>
-      <button
-        v-if="searchQuery || selectedGroupFilter !== 'ALL'"
-        @click="searchQuery = ''; selectedGroupFilter = 'ALL'"
-        type="button"
-        class="px-3.5 py-1.5 text-xs font-semibold text-[#6D28D9] bg-violet-50 hover:bg-violet-100 rounded-xl transition cursor-pointer"
-      >
-        Filtrlarni tozalash
-      </button>
-    </div>
-
-    <!-- VIEW 1: CREATIVE MINIMALIST GRID VIEW (Karta rejimi) -->
-    <div
-      v-else-if="viewMode === 'grid'"
-      class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4.5"
-    >
-      <div
-        v-for="s in paginatedStudents"
-        :key="s.id"
-        class="group relative bg-white rounded-2xl border border-slate-200/80 hover:border-violet-300 hover:shadow-lg transition-all duration-200 p-5 flex flex-col justify-between space-y-4 hover:-translate-y-0.5 shadow-2xs"
-      >
-        <!-- Top: Avatar, Name & Coins -->
-        <div class="space-y-3">
-          <div class="flex items-start justify-between gap-3">
-            <!-- Avatar & Student Info -->
-            <div class="flex items-center gap-3 min-w-0">
-              <div
-                class="h-11 w-11 rounded-2xl bg-gradient-to-br flex items-center justify-center font-bold text-sm shrink-0 shadow-2xs tracking-tight"
-                :class="getAvatarGradient(s.id)"
-              >
-                {{ s.firstName?.charAt(0) || 'T' }}{{ s.lastName?.charAt(0) || '' }}
-              </div>
-              <div class="min-w-0">
-                <router-link
-                  :to="'/dashboard/users/' + s.id"
-                  class="font-bold text-sm text-slate-900 group-hover:text-[#6D28D9] transition-colors truncate block leading-tight"
-                  :title="`${s.firstName} ${s.lastName} — 360° profilga o'tish`"
-                >
-                  {{ s.firstName }} {{ s.lastName }}
-                </router-link>
-                <p class="text-[11px] text-slate-400 font-mono mt-0.5 truncate flex items-center gap-1">
-                  <Phone class="h-3 w-3 text-slate-400 shrink-0" />
-                  <span>{{ s.phone }}</span>
-                </p>
-              </div>
-            </div>
-
-            <!-- Coins Badge (Interactive) -->
-            <button
-              @click="openCoinModal(s)"
-              type="button"
-              class="shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200/80 text-xs font-bold transition-all cursor-pointer shadow-2xs active:scale-95 group/coin"
-              title="Tanga qo'shish yoki yechib olish"
-            >
-              <span class="group-hover/coin:rotate-12 transition-transform">🪙</span>
-              <span>{{ s.coins || 0 }}</span>
-            </button>
-          </div>
-
-          <!-- Groups Enrolled Chips -->
-          <div class="space-y-1.5 pt-1">
-            <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
-              Guruhlari:
-            </span>
-            <div class="flex flex-wrap gap-1.5">
-              <template v-if="getStudentGroupsList(s.id).length > 0">
-                <span
-                  v-for="grp in getStudentGroupsList(s.id)"
-                  :key="grp"
-                  class="inline-flex items-center px-2 py-0.5 rounded-lg text-[11px] font-semibold bg-violet-50/80 text-[#6D28D9] border border-violet-100/90 truncate max-w-full"
-                  :title="grp"
-                >
-                  {{ grp }}
-                </span>
-              </template>
-              <span
-                v-else
-                class="inline-flex items-center px-2 py-0.5 rounded-lg text-[11px] font-medium bg-slate-100 text-slate-500"
-              >
-                Guruhsiz
-              </span>
-            </div>
-          </div>
-
-          <!-- Student Contact Details (Clean & Minimal) -->
-          <div class="space-y-1 pt-1 text-[11px] text-slate-500 border-t border-slate-100">
-            <div v-if="s.email" class="flex items-center gap-1.5 truncate text-slate-500" :title="s.email">
-              <Mail class="h-3 w-3 text-slate-400 shrink-0" />
-              <span class="truncate">{{ s.email }}</span>
-            </div>
-            <div v-if="s.address" class="flex items-center gap-1.5 truncate text-slate-500" :title="s.address">
-              <MapPin class="h-3 w-3 text-slate-400 shrink-0" />
-              <span class="truncate">{{ s.address }}</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Footer Actions: Profile (360°), Edit, Trash -->
-        <div class="pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
-          <!-- 360° Profile Button -->
-          <router-link
-            :to="'/dashboard/users/' + s.id"
-            class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-violet-50 hover:bg-[#6D28D9] text-[#6D28D9] hover:text-white font-bold text-xs transition-all shadow-2xs cursor-pointer active:scale-95"
-            title="360° boshqaruv profilini ochish"
-          >
-            <Eye class="h-3.5 w-3.5" />
-            <span>Profil</span>
-          </router-link>
-
-          <!-- Quick Action Buttons -->
-          <div class="flex items-center gap-1">
-            <template v-if="activeTab === 'ACTIVE'">
-              <button
-                @click="openCoinModal(s)"
-                type="button"
-                class="p-1.5 rounded-lg text-amber-500 hover:text-amber-600 hover:bg-amber-50 transition cursor-pointer"
-                title="Tanga boshqaruvi"
-              >
-                <Coins class="h-4 w-4" />
-              </button>
-              <button
-                @click="openEditModal(s)"
-                type="button"
-                class="p-1.5 rounded-lg text-slate-400 hover:text-[#6D28D9] hover:bg-slate-100 transition cursor-pointer"
-                title="Tahrirlash"
-              >
-                <Edit2 class="h-4 w-4" />
-              </button>
-              <button
-                @click="handleArchiveStudent(s)"
-                type="button"
-                class="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
-                title="Arxivlash (O'chirish)"
-              >
-                <Trash2 class="h-4 w-4" />
-              </button>
-            </template>
-            <template v-else>
-              <button
-                @click="handleRestoreStudent(s)"
-                type="button"
-                class="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 font-bold rounded-lg transition cursor-pointer text-xs"
-                title="Tiklash"
-              >
-                <RotateCcw class="h-3.5 w-3.5" />
-                <span>Tiklash</span>
-              </button>
-              <button
-                @click="handlePermanentDelete(s)"
-                type="button"
-                class="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
-                title="Butunlay o'chirish"
-              >
-                <Trash2 class="h-4 w-4" />
-              </button>
-            </template>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- VIEW 2: CLEAN MINIMALIST TABLE VIEW (Jadval rejimi) -->
-    <div v-else class="bg-white rounded-2xl border border-slate-200/80 shadow-2xs overflow-hidden">
-      <div class="overflow-x-auto">
-        <table class="w-full text-left text-xs text-slate-600">
-          <thead class="text-[12px] bg-slate-50/90 text-slate-500 font-bold border-b border-slate-200/80 select-none">
+      <!-- Table View (Exact layout from Screenshot 2) -->
+      <div v-else class="overflow-x-auto">
+        <table class="w-full text-left text-xs sm:text-sm text-slate-600">
+          <thead class="text-xs text-slate-600 font-bold border-b border-slate-200 select-none bg-white">
             <tr>
-              <th class="py-3 px-4 w-10">
+              <th class="py-3.5 px-4 w-10">
                 <input
                   type="checkbox"
                   :checked="isAllSelected"
@@ -675,26 +571,37 @@ async function handleAdjustCoins() {
                   class="rounded text-[#6D28D9] focus:ring-[#6D28D9] h-4 w-4 cursor-pointer accent-[#6D28D9]"
                 />
               </th>
-              <th @click="toggleSort" class="py-3 px-4 cursor-pointer hover:text-slate-900">
-                <div class="flex items-center gap-1.5">
-                  <span>Talaba</span>
+              <th @click="toggleSort" class="py-3.5 px-4 cursor-pointer hover:text-slate-900">
+                <div class="flex items-center gap-1">
+                  <span>Nomi</span>
                   <span class="text-xs text-slate-400">↓</span>
                 </div>
               </th>
-              <th class="py-3 px-4">Tanga</th>
-              <th class="py-3 px-4">Guruhlar</th>
-              <th class="py-3 px-4">Telefon</th>
-              <th class="py-3 px-4">Manzil</th>
-              <th class="py-3 px-4 text-right">Amallar</th>
+              <th class="py-3.5 px-4">Guruh</th>
+              <th class="py-3.5 px-4">Telefon raqamlari</th>
+              <th class="py-3.5 px-4">Email</th>
+              <th class="py-3.5 px-4">Tug'ilgan sanasi</th>
+              <th class="py-3.5 px-4">Manzil</th>
+              <th class="py-3.5 px-4">Yaratilgan sana</th>
+              <th class="py-3.5 px-4 text-right">Amallar</th>
             </tr>
           </thead>
 
           <tbody class="divide-y divide-slate-100 font-medium">
+            <!-- Empty State (Screenshot 1: "Hozircha talabalar yo'q") -->
+            <tr v-if="filteredStudents.length === 0">
+              <td colspan="9" class="py-28 text-center text-slate-500 text-sm font-medium">
+                Hozircha talabalar yo'q
+              </td>
+            </tr>
+
+            <!-- Student Rows (Screenshot 2) -->
             <tr
+              v-else
               v-for="s in paginatedStudents"
               :key="s.id"
               class="hover:bg-slate-50/70 transition-colors"
-              :class="selectedIds.includes(s.id) ? 'bg-indigo-50/30' : ''"
+              :class="selectedIds.includes(s.id) ? 'bg-violet-50/30' : ''"
             >
               <!-- Checkbox -->
               <td class="py-3.5 px-4">
@@ -706,119 +613,106 @@ async function handleAdjustCoins() {
                 />
               </td>
 
-              <!-- Talaba (Avatar + Ism + Email) -->
+              <!-- Nomi (Avatar + Ism) -->
               <td class="py-3.5 px-4">
-                <router-link
-                  :to="'/dashboard/users/' + s.id"
-                  class="flex items-center gap-3 group/student hover:opacity-90 transition-opacity"
-                  title="360° to'liq boshqaruv sahifasiga o'tish"
-                >
+                <div class="flex items-center gap-2.5">
                   <div
-                    class="h-9 w-9 rounded-xl bg-gradient-to-br flex items-center justify-center font-bold text-xs shrink-0 shadow-2xs"
-                    :class="getAvatarGradient(s.id)"
+                    class="h-7 w-7 rounded-full bg-violet-100 text-[#6D28D9] font-bold text-xs flex items-center justify-center shrink-0 tracking-tight"
                   >
-                    {{ s.firstName?.charAt(0) || 'T' }}{{ s.lastName?.charAt(0) || '' }}
+                    {{ (s.firstName?.[0] || 'T').toUpperCase() }}
                   </div>
-                  <div>
-                    <span class="font-bold text-slate-900 group-hover/student:text-[#6D28D9] inline-flex items-center gap-1.5 leading-tight text-xs transition-colors">
-                      <span>{{ s.firstName }} {{ s.lastName }}</span>
-                      <Eye class="h-3 w-3 opacity-0 group-hover/student:opacity-100 text-[#6D28D9] transition-opacity shrink-0" />
-                    </span>
-                    <span v-if="s.email" class="text-[11px] text-slate-400 block truncate max-w-44">
-                      {{ s.email }}
-                    </span>
-                  </div>
-                </router-link>
-              </td>
-
-              <!-- Tanga balansi -->
-              <td class="py-3.5 px-4">
-                <button
-                  @click="openCoinModal(s)"
-                  type="button"
-                  class="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200/70 text-xs font-bold transition cursor-pointer shadow-2xs"
-                  title="Tanga berish / ayirish"
-                >
-                  <span>🪙</span>
-                  <span>{{ s.coins || 0 }}</span>
-                </button>
-              </td>
-
-              <!-- Guruhlar -->
-              <td class="py-3.5 px-4">
-                <div class="flex flex-wrap gap-1 max-w-xs">
-                  <template v-if="getStudentGroupsList(s.id).length > 0">
-                    <span
-                      v-for="grp in getStudentGroupsList(s.id)"
-                      :key="grp"
-                      class="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-violet-50 text-[#6D28D9] border border-violet-150"
-                    >
-                      {{ grp }}
-                    </span>
-                  </template>
-                  <span v-else class="text-slate-400 text-xs">-</span>
+                  <span class="font-bold text-slate-900 whitespace-nowrap">
+                    {{ s.firstName }} {{ s.lastName }}
+                  </span>
                 </div>
               </td>
 
-              <!-- Telefon -->
-              <td class="py-3.5 px-4">
-                <span class="text-slate-700 font-mono text-xs">{{ s.phone }}</span>
+              <!-- Guruh -->
+              <td class="py-3.5 px-4 whitespace-nowrap">
+                <span class="text-slate-600 font-medium">
+                  {{ getStudentGroupNames(s) }}
+                </span>
+              </td>
+
+              <!-- Telefon raqamlari -->
+              <td class="py-3.5 px-4 whitespace-nowrap">
+                <span class="text-slate-700 font-mono text-xs sm:text-sm">
+                  {{ s.phone }}
+                </span>
+              </td>
+
+              <!-- Email -->
+              <td class="py-3.5 px-4 whitespace-nowrap">
+                <span class="text-slate-600">
+                  {{ s.email || '-' }}
+                </span>
+              </td>
+
+              <!-- Tug'ilgan sanasi -->
+              <td class="py-3.5 px-4 whitespace-nowrap">
+                <span class="text-slate-600">
+                  {{ formatDate(s.birthDate) }}
+                </span>
               </td>
 
               <!-- Manzil -->
-              <td class="py-3.5 px-4">
-                <span class="text-slate-500 truncate max-w-44 block text-xs">{{ s.address || '-' }}</span>
+              <td class="py-3.5 px-4 whitespace-nowrap">
+                <span class="text-slate-600">
+                  {{ s.address || '-' }}
+                </span>
               </td>
 
-              <!-- Amallar -->
-              <td class="py-3.5 px-4 text-right">
-                <div class="flex items-center justify-end gap-1.5">
+              <!-- Yaratilgan sana -->
+              <td class="py-3.5 px-4 whitespace-nowrap">
+                <span class="text-slate-600">
+                  {{ formatDate(s.created_at) }}
+                </span>
+              </td>
+
+              <!-- Amallar (Eye, Trash, Edit) -->
+              <td class="py-3.5 px-4 text-right whitespace-nowrap">
+                <div class="flex items-center justify-end gap-1.5 text-slate-400">
+                  <!-- Eye: View student detail -->
+                  <button
+                    @click="openViewStudent(s)"
+                    type="button"
+                    class="p-1 rounded-lg text-slate-500 hover:text-[#6D28D9] hover:bg-violet-50 transition cursor-pointer"
+                    title="Ko'rish"
+                  >
+                    <Eye class="h-4 w-4" />
+                  </button>
+
                   <template v-if="activeTab === 'ACTIVE'">
-                    <router-link
-                      :to="'/dashboard/users/' + s.id"
-                      class="p-1.5 rounded-lg text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 transition cursor-pointer"
-                      title="360° profil va to'liq boshqaruv"
-                    >
-                      <Eye class="h-4 w-4" />
-                    </router-link>
+                    <!-- Trash: Delete student -->
                     <button
-                      @click="openCoinModal(s)"
-                      class="p-1.5 rounded-lg text-amber-500 hover:text-amber-600 hover:bg-amber-50 transition cursor-pointer"
-                      title="Tanga berish / ayirish"
+                      @click="handleDeleteStudent(s)"
+                      type="button"
+                      class="p-1 rounded-lg text-slate-500 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
+                      title="O'chirish"
                     >
-                      <Coins class="h-4 w-4" />
+                      <Trash2 class="h-4 w-4" />
                     </button>
+
+                    <!-- Edit: Edit student -->
                     <button
-                      @click="openEditModal(s)"
-                      class="p-1.5 rounded-lg text-slate-400 hover:text-[#6D28D9] hover:bg-slate-100 transition cursor-pointer"
+                      @click="openEditStudent(s)"
+                      type="button"
+                      class="p-1 rounded-lg text-slate-500 hover:text-[#6D28D9] hover:bg-violet-50 transition cursor-pointer"
                       title="Tahrirlash"
                     >
                       <Edit2 class="h-4 w-4" />
                     </button>
-                    <button
-                      @click="handleArchiveStudent(s)"
-                      class="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
-                      title="Arxivlash"
-                    >
-                      <Trash2 class="h-4 w-4" />
-                    </button>
                   </template>
 
                   <template v-else>
+                    <!-- Restore from archive -->
                     <button
                       @click="handleRestoreStudent(s)"
-                      class="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 font-bold rounded-lg transition cursor-pointer text-xs"
-                      title="Faol holatga qaytarish"
+                      type="button"
+                      class="p-1 rounded-lg text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 transition cursor-pointer"
+                      title="Qayta tiklash"
                     >
-                      <RotateCcw class="h-3.5 w-3.5" />
-                      <span>Tiklash</span>
-                    </button>
-                    <button
-                      @click="handlePermanentDelete(s)"
-                      class="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
-                      title="Butunlay o'chirish"
-                    >
-                      <Trash2 class="h-4 w-4" />
+                      <RotateCcw class="h-4 w-4" />
                     </button>
                   </template>
                 </div>
@@ -827,246 +721,297 @@ async function handleAdjustCoins() {
           </tbody>
         </table>
       </div>
+
+      <!-- 3. Pagination Bar (Exact design from Screenshot 2) -->
+      <div
+        class="px-4 py-3 border-t border-slate-100 flex items-center justify-between text-xs sm:text-sm text-slate-600 bg-white select-none"
+      >
+        <button
+          @click="currentPage = Math.max(1, currentPage - 1)"
+          :disabled="currentPage === 1"
+          type="button"
+          class="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-200 font-medium hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition shadow-2xs"
+        >
+          ← Previous
+        </button>
+
+        <!-- Page Numbers -->
+        <div class="flex items-center gap-1.5">
+          <button
+            v-for="p in totalPages"
+            :key="p"
+            @click="currentPage = p"
+            type="button"
+            class="h-7 w-7 rounded-lg font-bold text-xs flex items-center justify-center transition cursor-pointer"
+            :class="
+              currentPage === p
+                ? 'bg-[#6D28D9] text-white shadow-xs'
+                : 'text-slate-700 hover:bg-slate-100'
+            "
+          >
+            {{ p }}
+          </button>
+        </div>
+
+        <button
+          @click="currentPage = Math.min(totalPages, currentPage + 1)"
+          :disabled="currentPage === totalPages"
+          type="button"
+          class="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-200 font-medium hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition shadow-2xs"
+        >
+          Next →
+        </button>
+      </div>
     </div>
 
-    <!-- 3. Clean Pagination (Grid va Jadval uchun birdek ishlaydi) -->
+    <!-- 4. SLIDE-OVER RIGHT DRAWER (Talaba qo'shish / tahrirlash — Matching Screenshot 1) -->
+    <!-- Backdrop Overlay -->
     <div
-      v-if="filteredStudents.length > itemsPerPage"
-      class="px-5 py-3.5 bg-white rounded-2xl border border-slate-200/80 flex items-center justify-between text-xs text-slate-600 shadow-2xs"
-    >
-      <button
-        @click="currentPage = Math.max(1, currentPage - 1)"
-        :disabled="currentPage === 1"
-        class="px-3.5 py-1.5 rounded-xl border border-slate-200 font-bold hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors shadow-2xs"
-      >
-        ← Oldingi
-      </button>
+      v-if="isDrawerOpen"
+      @click="closeDrawer"
+      class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-40 transition-opacity"
+    />
 
-      <div class="flex items-center gap-1.5">
+    <!-- Drawer Panel -->
+    <div
+      v-if="isDrawerOpen"
+      class="fixed top-0 right-0 bottom-0 w-full sm:w-[460px] bg-white shadow-2xl z-50 flex flex-col transform transition-transform duration-300 ease-in-out"
+    >
+      <!-- Drawer Header -->
+      <div class="p-6 border-b border-slate-100 flex items-start justify-between">
+        <div>
+          <h2 class="text-lg sm:text-xl font-bold text-slate-900">
+            {{ isEditing ? 'Talabani tahrirlash' : 'Talaba qo\'shish' }}
+          </h2>
+          <p class="text-xs text-slate-500 mt-1">
+            {{ isEditing ? 'Bu yerda siz talaba ma\'lumotlarini yangilashingiz mumkin.' : 'Bu yerda siz yangi Talaba qo\'shishingiz mumkin.' }}
+          </p>
+        </div>
         <button
-          v-for="p in totalPages"
-          :key="p"
-          @click="currentPage = p"
-          class="h-7 w-7 rounded-lg font-bold text-xs flex items-center justify-center transition-colors cursor-pointer"
-          :class="currentPage === p ? 'bg-[#6D28D9] text-white shadow-xs' : 'text-slate-700 hover:bg-slate-100'"
+          @click="closeDrawer"
+          type="button"
+          class="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition cursor-pointer"
         >
-          {{ p }}
+          <X class="h-5 w-5" />
         </button>
       </div>
 
-      <button
-        @click="currentPage = Math.min(totalPages, currentPage + 1)"
-        :disabled="currentPage === totalPages"
-        class="px-3.5 py-1.5 rounded-xl border border-slate-200 font-bold hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors shadow-2xs"
-      >
-        Keyingi →
-      </button>
-    </div>
-
-    <!-- Create Student Modal -->
-    <Modal
-      :show="showCreateModal"
-      title="Yangi Talaba Qo'shish"
-      @close="showCreateModal = false"
-    >
-      <form @submit.prevent="handleCreateStudent" class="space-y-4">
-        <div v-if="formError" class="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-700">
-          {{ formError }}
+      <!-- Drawer Body (Scrollable Form Fields) -->
+      <div class="flex-1 overflow-y-auto p-6 space-y-4 text-xs sm:text-sm">
+        <!-- Error Banner -->
+        <div
+          v-if="drawerError"
+          class="p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 font-medium"
+        >
+          {{ drawerError }}
         </div>
 
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <label class="block text-xs font-bold text-slate-700 mb-1">Ism *</label>
-            <input
-              v-model="formFirstName"
-              type="text"
-              required
-              placeholder="Jasur"
-              class="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#6D28D9]"
-            />
-          </div>
-          <div>
-            <label class="block text-xs font-bold text-slate-700 mb-1">Familiya *</label>
-            <input
-              v-model="formLastName"
-              type="text"
-              required
-              placeholder="Bekmirzayev"
-              class="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#6D28D9]"
-            />
-          </div>
+        <!-- 1. Telefon raqam -->
+        <div>
+          <label class="block text-xs font-bold text-slate-800 mb-1.5">
+            Telefon raqam
+          </label>
+          <input
+            v-model="drawerPhone"
+            type="text"
+            placeholder="+998 90 123 45 67"
+            class="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#6D28D9] font-medium text-slate-800 placeholder:text-slate-400"
+          />
         </div>
 
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <label class="block text-xs font-bold text-slate-700 mb-1">Telefon *</label>
-            <input
-              v-model="formPhone"
-              type="text"
-              required
-              placeholder="+998901234567"
-              class="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#6D28D9]"
-            />
-          </div>
-          <div>
-            <label class="block text-xs font-bold text-slate-700 mb-1">Email</label>
-            <input
-              v-model="formEmail"
-              type="email"
-              placeholder="student@nyver.uz"
-              class="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#6D28D9]"
-            />
-          </div>
+        <!-- 2. Mail -->
+        <div>
+          <label class="block text-xs font-bold text-slate-800 mb-1.5">
+            Mail
+          </label>
+          <input
+            v-model="drawerEmail"
+            type="email"
+            placeholder="student@nyver.uz"
+            class="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#6D28D9] font-medium text-slate-800 placeholder:text-slate-400"
+          />
         </div>
 
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <label class="block text-xs font-bold text-slate-700 mb-1">Tug'ilgan sana</label>
-            <input
-              v-model="formBirthDate"
-              type="date"
-              class="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#6D28D9]"
-            />
-          </div>
-          <div>
-            <label class="block text-xs font-bold text-slate-700 mb-1">Guruhga biriktirish</label>
+        <!-- 3. Talaba FIO -->
+        <div>
+          <label class="block text-xs font-bold text-slate-800 mb-1.5">
+            Talaba FIO
+          </label>
+          <input
+            v-model="drawerFio"
+            type="text"
+            placeholder="Masalan: Sardor Rahimov"
+            class="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#6D28D9] font-medium text-slate-800 placeholder:text-slate-400"
+          />
+        </div>
+
+        <!-- 4. Tug'ilgan sanasi -->
+        <div>
+          <label class="block text-xs font-bold text-slate-800 mb-1.5">
+            Tug'ilgan sanasi
+          </label>
+          <input
+            v-model="drawerBirthDate"
+            type="date"
+            class="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#6D28D9] font-medium text-slate-800"
+          />
+        </div>
+
+        <!-- 5. Manzil -->
+        <div>
+          <label class="block text-xs font-bold text-slate-800 mb-1.5">
+            Manzil
+          </label>
+          <input
+            v-model="drawerAddress"
+            type="text"
+            placeholder="Manzilni kiriting"
+            class="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#6D28D9] font-medium text-slate-800 placeholder:text-slate-400"
+          />
+        </div>
+
+        <!-- 6. Parol -->
+        <div>
+          <label class="block text-xs font-bold text-slate-800 mb-1.5">
+            Parol
+          </label>
+          <input
+            v-model="drawerPassword"
+            type="text"
+            placeholder="Parolni kiriting"
+            class="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#6D28D9] font-medium text-slate-800 placeholder:text-slate-400"
+          />
+          <p class="text-[11px] text-slate-400 mt-1.5 leading-relaxed">
+            💡 Agar bo'sh qoldirilsa, tizim avtomatik ravishda 1 marttalik vaqtinchalik parol yaratadi va talaba emailiga login bilan yuboradi.
+          </p>
+        </div>
+
+        <!-- 7. Guruh -->
+        <div>
+          <label class="block text-xs font-bold text-slate-800 mb-1.5">
+            Guruh
+          </label>
+          <div class="relative">
             <select
-              v-model="formGroupId"
-              class="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#6D28D9]"
+              v-model="drawerGroupId"
+              class="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#6D28D9] font-medium text-slate-700 appearance-none"
             >
-              <option value="">Guruh tanlanmagan</option>
+              <option value="">+ Guruh qo'shish</option>
               <option v-for="g in groups" :key="g.id" :value="g.id">
-                {{ g.name }} ({{ g.course?.name }})
+                {{ g.name }} ({{ g.course?.name || "Asosiy" }})
               </option>
             </select>
           </div>
         </div>
+      </div>
 
-        <div>
-          <label class="block text-xs font-bold text-slate-700 mb-1">Manzil</label>
-          <input
-            v-model="formAddress"
-            type="text"
-            placeholder="Toshkent sh., Olmazor tumani"
-            class="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#6D28D9]"
-          />
-        </div>
+      <!-- Drawer Footer -->
+      <div class="border-t border-slate-100 p-4 sm:p-5 flex items-center justify-end gap-3 bg-white">
+        <button
+          @click="closeDrawer"
+          type="button"
+          class="px-5 py-2.5 rounded-xl border border-slate-200 text-slate-700 font-semibold text-xs sm:text-sm hover:bg-slate-50 transition cursor-pointer"
+        >
+          Bekor qilish
+        </button>
+        <button
+          @click="handleSaveStudent"
+          type="button"
+          :disabled="isSubmitting"
+          class="px-6 py-2.5 rounded-xl bg-[#6D28D9] hover:bg-[#5B21B6] active:bg-[#4C1D95] text-white font-semibold text-xs sm:text-sm transition shadow-xs cursor-pointer disabled:opacity-50"
+        >
+          {{ isSubmitting ? 'Saqlanmoqda...' : 'Saqlash' }}
+        </button>
+      </div>
+    </div>
 
-        <div>
-          <label class="block text-xs font-bold text-slate-700 mb-1">Dastlabki Parol</label>
-          <input
-            v-model="formPassword"
-            type="text"
-            placeholder="123456"
-            class="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#6D28D9]"
-          />
-        </div>
-
-        <div class="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
-          <button
-            @click="showCreateModal = false"
-            type="button"
-            class="px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
-          >
-            Bekor qilish
-          </button>
-          <button
-            type="submit"
-            :disabled="isSubmitting"
-            class="px-5 py-2 text-sm font-bold text-white bg-[#6D28D9] hover:bg-[#5B21B6] rounded-xl transition-colors cursor-pointer shadow-xs disabled:opacity-50"
-          >
-            {{ isSubmitting ? 'Saqlanmoqda...' : 'Saqlash' }}
-          </button>
-        </div>
-      </form>
-    </Modal>
-
-    <!-- Edit Student Modal -->
+    <!-- 5. View Student Modal (Eye action) -->
     <Modal
-      :show="showEditModal"
-      title="Talaba Ma'lumotlarini Tahrirlash"
-      @close="showEditModal = false"
+      :show="showViewModal"
+      title="Talaba Ma'lumotlari"
+      @close="showViewModal = false"
     >
-      <form @submit.prevent="handleEditStudent" class="space-y-4">
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <label class="block text-xs font-bold text-slate-700 mb-1">Ism *</label>
-            <input
-              v-model="editFirstName"
-              type="text"
-              required
-              class="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#6D28D9]"
-            />
+      <div v-if="viewingStudent" class="space-y-4">
+        <div class="flex items-center gap-3.5 pb-4 border-b border-slate-100">
+          <div
+            class="h-12 w-12 rounded-full bg-violet-100 text-[#6D28D9] font-bold text-base flex items-center justify-center shrink-0"
+          >
+            {{ (viewingStudent.firstName?.[0] || 'T').toUpperCase() }}
           </div>
           <div>
-            <label class="block text-xs font-bold text-slate-700 mb-1">Familiya *</label>
-            <input
-              v-model="editLastName"
-              type="text"
-              required
-              class="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#6D28D9]"
-            />
+            <h3 class="text-base font-bold text-slate-900">
+              {{ viewingStudent.firstName }} {{ viewingStudent.lastName }}
+            </h3>
+            <p class="text-xs text-slate-400 font-mono mt-0.5">
+              {{ viewingStudent.phone }}
+            </p>
           </div>
         </div>
 
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <label class="block text-xs font-bold text-slate-700 mb-1">Telefon *</label>
-            <input
-              v-model="editPhone"
-              type="text"
-              required
-              class="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#6D28D9]"
-            />
+        <div class="grid grid-cols-2 gap-3 text-xs">
+          <div class="p-3 bg-slate-50 rounded-xl">
+            <span class="text-slate-400 font-medium block">Email:</span>
+            <span class="font-bold text-slate-800">{{ viewingStudent.email || '-' }}</span>
           </div>
-          <div>
-            <label class="block text-xs font-bold text-slate-700 mb-1">Email</label>
-            <input
-              v-model="editEmail"
-              type="email"
-              class="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#6D28D9]"
-            />
+          <div class="p-3 bg-slate-50 rounded-xl">
+            <span class="text-slate-400 font-medium block">Guruh:</span>
+            <span class="font-bold text-[#6D28D9]">{{ getStudentGroupNames(viewingStudent) }}</span>
+          </div>
+          <div class="p-3 bg-slate-50 rounded-xl">
+            <span class="text-slate-400 font-medium block">Tug'ilgan sana:</span>
+            <span class="font-bold text-slate-800">{{ formatDate(viewingStudent.birthDate) }}</span>
+          </div>
+          <div class="p-3 bg-slate-50 rounded-xl">
+            <span class="text-slate-400 font-medium block">Manzil:</span>
+            <span class="font-bold text-slate-800">{{ viewingStudent.address || '-' }}</span>
+          </div>
+          <div class="p-3 bg-slate-50 rounded-xl">
+            <span class="text-slate-400 font-medium block">Tangalar (Coins):</span>
+            <span class="font-bold text-amber-600">🪙 {{ viewingStudent.coins || 0 }}</span>
+          </div>
+          <div class="p-3 bg-slate-50 rounded-xl">
+            <span class="text-slate-400 font-medium block">A'zo bo'lgan sana:</span>
+            <span class="font-bold text-slate-800">{{ formatDate(viewingStudent.created_at) }}</span>
           </div>
         </div>
 
-        <div>
-          <label class="block text-xs font-bold text-slate-700 mb-1">Manzil</label>
-          <input
-            v-model="editAddress"
-            type="text"
-            class="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#6D28D9]"
-          />
-        </div>
-
-        <div class="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
+        <div class="flex items-center justify-between pt-4 border-t border-slate-100">
           <button
-            @click="showEditModal = false"
+            @click="
+              showViewModal = false;
+              openCoinModal(viewingStudent);
+            "
             type="button"
-            class="px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+            class="px-3.5 py-2 bg-amber-50 hover:bg-amber-100 text-amber-700 font-bold rounded-xl text-xs transition cursor-pointer"
           >
-            Bekor qilish
+            🪙 Tanga berish / ayirish
           </button>
-          <button
-            type="submit"
-            :disabled="isSubmitting"
-            class="px-5 py-2 text-sm font-bold text-white bg-[#6D28D9] hover:bg-[#5B21B6] rounded-xl transition-colors cursor-pointer shadow-xs disabled:opacity-50"
-          >
-            {{ isSubmitting ? 'Saqlanmoqda...' : 'Yangilash' }}
-          </button>
+          <div class="flex items-center gap-2">
+            <button
+              @click="
+                showViewModal = false;
+                openEditStudent(viewingStudent);
+              "
+              type="button"
+              class="px-4 py-2 bg-[#6D28D9] hover:bg-[#5B21B6] text-white font-bold rounded-xl text-xs transition cursor-pointer"
+            >
+              Tahrirlash
+            </button>
+          </div>
         </div>
-      </form>
+      </div>
     </Modal>
 
-    <!-- Adjust Coins Modal -->
+    <!-- 6. Coins Modal -->
     <Modal
       :show="showCoinModal"
       title="Tangalar Balansini Boshqarish"
       @close="showCoinModal = false"
     >
       <form @submit.prevent="handleAdjustCoins" class="space-y-4">
-        <div v-if="selectedStudent" class="p-3 bg-amber-50 rounded-xl text-xs text-amber-800">
-          Talaba: <strong>{{ selectedStudent.firstName }} {{ selectedStudent.lastName }}</strong><br />
-          Hozirgi balans: <strong>{{ selectedStudent.coins }} tanga</strong>
+        <div v-if="selectedStudentForCoins" class="p-3 bg-amber-50 rounded-xl text-xs text-amber-800">
+          Talaba: <strong>{{ selectedStudentForCoins.firstName }} {{ selectedStudentForCoins.lastName }}</strong><br />
+          Hozirgi balans: <strong>{{ selectedStudentForCoins.coins || 0 }} tanga</strong>
         </div>
 
         <div>
@@ -1075,7 +1020,7 @@ async function handleAdjustCoins() {
             v-model="coinAmount"
             type="number"
             required
-            class="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#6D28D9]"
+            class="w-full px-3.5 py-2 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#6D28D9]"
           />
         </div>
 
@@ -1085,7 +1030,7 @@ async function handleAdjustCoins() {
             v-model="coinReason"
             type="text"
             required
-            class="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#6D28D9]"
+            class="w-full px-3.5 py-2 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#6D28D9]"
           />
         </div>
 
@@ -1093,14 +1038,14 @@ async function handleAdjustCoins() {
           <button
             @click="showCoinModal = false"
             type="button"
-            class="px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+            class="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition cursor-pointer"
           >
             Bekor qilish
           </button>
           <button
             type="submit"
             :disabled="isSubmitting"
-            class="px-5 py-2 text-sm font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-xl transition-colors cursor-pointer shadow-xs disabled:opacity-50"
+            class="px-5 py-2 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-xl transition cursor-pointer shadow-xs disabled:opacity-50"
           >
             {{ isSubmitting ? 'Saqlanmoqda...' : 'Tasdiqlash' }}
           </button>
