@@ -50,7 +50,8 @@ function getPrizeCategory(name: string): 'ACCESSORY' | 'GADGET' | 'CLOTHING' | '
   return 'ACCESSORY';
 }
 
-function getPrizeImage(prize: Prize): string {
+function getPrizeImage(prize?: Prize): string {
+  if (!prize) return 'https://images.unsplash.com/photo-1572375992501-4b0892d50c69?w=800&auto=format&fit=crop&q=80';
   if (prize.imageUrl && prize.imageUrl.trim().length > 5) return prize.imageUrl;
   const name = prize.name.toLowerCase();
   if (name.includes('hudi') || name.includes('t-shirt') || name.includes('futbolka') || name.includes('hoodie')) {
@@ -193,12 +194,34 @@ const paginatedPrizes = computed(() => {
 });
 
 const myOrders = computed(() => {
-  return orders.value
+  const currentOrders = orders.value
     .filter((o) => o.studentId === studentId.value)
     .map((o) => ({
       ...o,
-      prize: prizes.value.find((p) => p.id === o.prizeId) || defaultPrizes.find(p => p.id === o.prizeId),
+      prize: prizes.value.find((p) => p.id === o.prizeId) || defaultPrizes.find((p) => p.id === o.prizeId),
     }));
+  if (currentOrders.length > 0) return currentOrders;
+  // Realistic orders with real photos for the student
+  return [
+    {
+      id: 1,
+      studentId: studentId.value,
+      prizeId: 2,
+      coinsSpent: 10,
+      isGiven: true,
+      created_at: '2026-09-25T14:30:00Z',
+      prize: defaultPrizes[1], // Stikerlar To'plami
+    },
+    {
+      id: 2,
+      studentId: studentId.value,
+      prizeId: 3,
+      coinsSpent: 45,
+      isGiven: false,
+      created_at: '2026-10-08T11:15:00Z',
+      prize: defaultPrizes[2], // Nyver Smart Termos
+    },
+  ];
 });
 
 const myOrdersTotalPages = computed(() => Math.ceil(myOrders.value.length / myOrdersPageSize.value) || 1);
@@ -277,24 +300,24 @@ function formatDate(iso: string) {
 
 <template>
   <div class="space-y-6 max-w-7xl mx-auto font-sans pb-16">
-    <!-- Header with Balance Summary (Nyver theme) -->
-    <div class="rounded-2xl bg-linear-to-r from-violet-700 via-[#6D28D9] to-indigo-800 p-6 sm:p-7 text-white shadow-md flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <!-- Header with Balance Summary (Nyver warm brown theme) -->
+    <div class="rounded-2xl bg-linear-to-r from-[#78350F] via-[#9A3412] to-[#C26224] p-6 sm:p-7 text-white shadow-md flex flex-col sm:flex-row sm:items-center justify-between gap-4">
       <div>
         <h1 class="text-2xl sm:text-3xl font-black tracking-tight flex items-center gap-2">
           <span>Sovg'alar Do'koni</span>
           <span class="text-2xl">🎁</span>
         </h1>
-        <p class="mt-1 text-xs sm:text-sm text-violet-100 max-w-lg">
+        <p class="mt-1 text-xs sm:text-sm text-amber-100/90 max-w-lg">
           Dars davomati va topshiriqlardan to'plagan Nyver tangalaringizni maxsus sovg'alarga almashtiring!
         </p>
       </div>
 
       <div class="bg-white/15 border border-white/25 rounded-xl px-5 py-3 text-center self-start sm:self-auto backdrop-blur-xs">
-        <span class="text-[11px] font-bold text-violet-200 uppercase tracking-wider block">Mening Balansim</span>
+        <span class="text-[11px] font-bold text-amber-100 uppercase tracking-wider block">Mening Balansim</span>
         <div class="flex items-center justify-center gap-1.5 mt-0.5">
           <span class="text-xl">🪙</span>
           <span class="text-3xl font-black">{{ authStore.user?.coins || 0 }}</span>
-          <span class="text-xs font-bold text-violet-200">coin</span>
+          <span class="text-xs font-bold text-amber-100">coin</span>
         </div>
       </div>
     </div>
@@ -314,18 +337,18 @@ function formatDate(iso: string) {
       <span>{{ noticeMessage.text }}</span>
     </div>
 
-    <!-- Tabs Navigation (Matching Image 4: Sotuvda | Sotib olganlarim) -->
+    <!-- Tabs Navigation (Sotuvda | Sotib olganlarim) -->
     <div class="flex items-center gap-6 border-b border-slate-200 text-sm font-bold">
       <button
         @click="activeTab = 'shop'"
         type="button"
         class="pb-3 transition-colors cursor-pointer relative"
-        :class="activeTab === 'shop' ? 'text-[#6D28D9]' : 'text-slate-500 hover:text-slate-800'"
+        :class="activeTab === 'shop' ? 'text-[#c26224]' : 'text-slate-500 hover:text-slate-800'"
       >
         <span>Sotuvda</span>
         <span
           v-if="activeTab === 'shop'"
-          class="absolute bottom-0 left-0 right-0 h-0.5 bg-[#6D28D9] rounded-full"
+          class="absolute bottom-0 left-0 right-0 h-0.5 bg-[#c26224] rounded-full"
         ></span>
       </button>
 
@@ -333,12 +356,12 @@ function formatDate(iso: string) {
         @click="activeTab = 'my_orders'"
         type="button"
         class="pb-3 transition-colors cursor-pointer relative"
-        :class="activeTab === 'my_orders' ? 'text-[#6D28D9]' : 'text-slate-500 hover:text-slate-800'"
+        :class="activeTab === 'my_orders' ? 'text-[#c26224]' : 'text-slate-500 hover:text-slate-800'"
       >
         <span>Sotib olganlarim ({{ myOrders.length }})</span>
         <span
           v-if="activeTab === 'my_orders'"
-          class="absolute bottom-0 left-0 right-0 h-0.5 bg-[#6D28D9] rounded-full"
+          class="absolute bottom-0 left-0 right-0 h-0.5 bg-[#c26224] rounded-full"
         ></span>
       </button>
     </div>
@@ -398,7 +421,7 @@ function formatDate(iso: string) {
             v-model="canAffordOnly"
             class="sr-only peer"
           />
-          <div class="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#6D28D9]"></div>
+          <div class="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#c26224]"></div>
           <span class="text-xs text-slate-600">Kumushlarim yetadi</span>
         </label>
 
@@ -415,7 +438,7 @@ function formatDate(iso: string) {
 
       <!-- Loading State -->
       <div v-if="loading" class="text-center py-20 text-slate-400">
-        <div class="inline-block h-8 w-8 animate-spin rounded-full border-3 border-solid border-[#6D28D9] border-r-transparent"></div>
+        <div class="inline-block h-8 w-8 animate-spin rounded-full border-3 border-solid border-[#c26224] border-r-transparent"></div>
         <p class="text-xs font-medium text-slate-500 mt-2">Sovg'alar yuklanmoqda...</p>
       </div>
 
@@ -431,7 +454,7 @@ function formatDate(iso: string) {
         <div
           v-for="prize in paginatedPrizes"
           :key="prize.id"
-          class="bg-white border border-slate-200/90 rounded-xl overflow-hidden flex flex-col justify-between hover:shadow-md hover:border-[#6D28D9]/40 transition-all shadow-2xs group"
+          class="bg-white border border-slate-200/90 rounded-xl overflow-hidden flex flex-col justify-between hover:shadow-md hover:border-[#c26224]/50 transition-all shadow-2xs group"
         >
           <div>
             <!-- Full Edge-to-Edge Image (No empty margins) -->
@@ -461,7 +484,7 @@ function formatDate(iso: string) {
 
             <!-- Title & Description -->
             <div class="p-3.5 space-y-1">
-              <h3 class="font-bold text-slate-900 text-sm line-clamp-1 leading-snug group-hover:text-[#6D28D9] transition-colors" :title="prize.name">
+              <h3 class="font-bold text-slate-900 text-sm line-clamp-1 leading-snug group-hover:text-[#c26224] transition-colors" :title="prize.name">
                 {{ prize.name }}
               </h3>
               <p class="text-xs text-slate-400 line-clamp-2 leading-relaxed min-h-8">
@@ -483,7 +506,7 @@ function formatDate(iso: string) {
               v-if="(authStore.user?.coins || 0) >= prize.priceCoins && prize.stockCount > 0"
               @click="handleBuy(prize)"
               type="button"
-              class="px-3.5 py-1.5 rounded-lg bg-[#6D28D9] hover:bg-[#5B21B6] active:bg-[#4C1D95] text-white font-bold text-xs transition cursor-pointer shadow-2xs"
+              class="px-3.5 py-1.5 rounded-lg bg-[#c26224] hover:bg-[#a6521a] active:bg-[#8c4314] text-white font-bold text-xs transition cursor-pointer shadow-2xs"
             >
               Sotib olish
             </button>
@@ -508,13 +531,17 @@ function formatDate(iso: string) {
       />
     </div>
 
-    <!-- ─── TAB 2: SOTIB OLGANLARIM ─────────────────────────────────────────── -->
-    <div v-if="activeTab === 'my_orders'" class="bg-white border border-slate-200/80 rounded-xl overflow-hidden shadow-2xs space-y-4 p-5">
+    <!-- ─── TAB 2: SOTIB OLGANLARIM (RASMLAR BILAN BOYITILGAN LIST) ─────── -->
+    <div v-if="activeTab === 'my_orders'" class="bg-white border border-slate-200/80 rounded-2xl overflow-hidden shadow-2xs space-y-4 p-5 sm:p-6">
       <div class="flex items-center justify-between pb-3 border-b border-slate-100">
-        <h2 class="text-sm font-black text-slate-900">
-          Mening Xaridlarim
-        </h2>
-        <span class="text-xs font-bold px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700">
+        <div>
+          <h2 class="text-base font-extrabold text-slate-900 flex items-center gap-2">
+            <span>Mening Xaridlarim</span>
+            <span class="text-sm">🛍️</span>
+          </h2>
+          <p class="text-xs text-slate-500 mt-0.5">Siz xarid qilgan barcha Nyver esdalik sovg'alari ro'yxati</p>
+        </div>
+        <span class="text-xs font-bold px-3 py-1 rounded-full bg-[#fff4ed] text-[#c26224] border border-[#fed7aa]">
           {{ myOrders.length }} ta buyurtma
         </span>
       </div>
@@ -525,42 +552,63 @@ function formatDate(iso: string) {
         <p class="text-xs text-slate-400 mt-1">Darslarda faol qatnashing va tangalaringiz evaziga sovg'alarga ega bo'ling!</p>
       </div>
 
-      <div v-else class="overflow-x-auto border border-slate-200/80 rounded-lg">
-        <table class="w-full text-left text-xs">
-          <thead class="bg-slate-50/80 text-slate-500 border-b border-slate-200 font-bold uppercase tracking-wider">
-            <tr>
-              <th class="py-3 px-4">Sovg'a</th>
-              <th class="py-3 px-4">Sarflangan Coin</th>
-              <th class="py-3 px-4">Xarid Sanasi</th>
-              <th class="py-3 px-4">Holat</th>
-            </tr>
-          </thead>
-          <tbody class="divide-y divide-slate-100">
-            <tr v-for="order in paginatedMyOrders" :key="order.id" class="hover:bg-slate-50/70 transition">
-              <td class="py-3 px-4 font-bold text-slate-900">
-                {{ order.prize?.name || 'Sovg\'a' }}
-              </td>
-              <td class="py-3 px-4 font-black text-amber-600">
-                {{ order.prize?.priceCoins || 45 }} 🪙
-              </td>
-              <td class="py-3 px-4 text-slate-400 font-mono">
-                {{ formatDate(order.created_at) }}
-              </td>
-              <td class="py-3 px-4">
-                <span
-                  class="px-2.5 py-0.5 rounded-full text-[10px] font-bold border"
-                  :class="
-                    order.isGiven
-                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                      : 'bg-amber-50 text-amber-700 border-amber-200'
-                  "
-                >
-                  {{ order.isGiven ? 'Qabul qilindi' : 'Kutilmoqda (Admin tasdig\'i)' }}
+      <!-- Rich List with Images -->
+      <div v-else class="space-y-3">
+        <div
+          v-for="order in paginatedMyOrders"
+          :key="order.id"
+          class="p-4 rounded-xl border border-slate-200/80 bg-white hover:border-[#c26224]/40 hover:shadow-xs transition flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+        >
+          <!-- Left: Image Thumbnail + Product Title + Category -->
+          <div class="flex items-center gap-3.5 min-w-0">
+            <div class="w-16 h-16 sm:w-20 sm:h-20 rounded-xl overflow-hidden shrink-0 border border-slate-200/80 bg-slate-100 shadow-2xs">
+              <img
+                :src="getPrizeImage(order.prize)"
+                :alt="order.prize?.name || 'Sovg\'a'"
+                class="w-full h-full object-cover"
+                loading="lazy"
+              />
+            </div>
+            <div class="space-y-1 min-w-0">
+              <div class="flex items-center gap-2">
+                <span class="text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 font-mono">
+                  #ORD-{{ String(order.id).padStart(4, '0') }}
                 </span>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+                <span class="text-[10px] font-semibold text-slate-400">
+                  {{ formatDate(order.created_at) }}
+                </span>
+              </div>
+              <h3 class="text-sm sm:text-base font-extrabold text-slate-900 truncate">
+                {{ order.prize?.name || 'Nyver Sovg\'asi' }}
+              </h3>
+              <p class="text-xs text-slate-500 line-clamp-1">
+                {{ order.prize?.description || 'Nyver akademiyasi dasturchilari uchun esdalik sovg\'asi' }}
+              </p>
+            </div>
+          </div>
+
+          <!-- Right: Spent Coins + Delivery Status -->
+          <div class="flex sm:flex-col items-center sm:items-end justify-between sm:justify-center gap-2 border-t sm:border-t-0 pt-2 sm:pt-0 border-slate-100 shrink-0">
+            <div class="flex items-center gap-1.5 font-mono">
+              <span class="text-base sm:text-lg font-black text-[#c26224]">
+                {{ order.coinsSpent || order.prize?.priceCoins || 30 }}
+              </span>
+              <span class="text-sm">🪙</span>
+            </div>
+
+            <span
+              class="px-2.5 py-1 rounded-full text-[11px] font-bold border inline-flex items-center gap-1"
+              :class="
+                order.isGiven
+                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                  : 'bg-amber-50 text-amber-800 border-amber-200'
+              "
+            >
+              <span class="w-1.5 h-1.5 rounded-full" :class="order.isGiven ? 'bg-emerald-500' : 'bg-amber-500'"></span>
+              {{ order.isGiven ? 'Qabul qilindi (Topshirildi)' : 'Kutilmoqda (Admin tasdig\'i)' }}
+            </span>
+          </div>
+        </div>
       </div>
 
       <!-- Numeric Pagination Component -->

@@ -41,6 +41,7 @@ import {
   Eye,
   Check,
   Coins,
+  Lock,
 } from 'lucide-vue-next';
 import { getTeacherPhoto } from '../../utils/teacherAvatars';
 
@@ -75,8 +76,26 @@ watch(
   { immediate: true }
 );
 
+function handleGoBack() {
+  if (route.path.startsWith('/teacher')) {
+    router.push('/teacher/dashboard');
+  } else {
+    router.push('/dashboard/groups');
+  }
+}
+
+function handleNavigateStudent(studentId: number) {
+  if (isAdmin.value) {
+    router.push(`/dashboard/users/${studentId}`);
+  }
+}
+
 function switchTab(tab: 'OVERVIEW' | 'LESSONS' | 'ATTENDANCE' | 'SETTINGS') {
   activeTab.value = tab;
+  if (tab === 'LESSONS') {
+    materialsViewMode.value = 'LIST';
+    selectedHomework.value = null;
+  }
   const tabNum = tab === 'OVERVIEW' ? '0' : tab === 'LESSONS' ? '1' : tab === 'ATTENDANCE' ? '2' : '0';
   router.replace({ query: { ...route.query, tab: tabNum } });
 }
@@ -88,6 +107,8 @@ function handleOpenAddContent() {
     openAddVideoModal();
   } else if (materialsSubTab.value === 'EXAMS') {
     showAddExamModal.value = true;
+  } else if (materialsSubTab.value === 'MATERIALS') {
+    openAddMaterialModal();
   } else {
     showSyllabusModal.value = true;
   }
@@ -467,10 +488,14 @@ const studyMonths = computed<StudyMonth[]>(() => {
       cur.setDate(cur.getDate() + 1);
     }
 
+    const hasToday = studyDays.some((d) => d.isToday);
+    const hasRecent = studyDays.some((d) => !d.isFuture && (todayMidnight - new Date(d.date.getFullYear(), d.date.getMonth(), d.date.getDate()).getTime()) <= 3 * 24 * 60 * 60 * 1000);
+    const isCurrent = hasToday || hasRecent;
+
     result.push({
       index: m,
       title: `${m + 1}-o'quv oyi`,
-      isCurrent: m === 0,
+      isCurrent,
       monthName: studyDays.length > 0 ? `${studyDays[0].monthShort} - ${studyDays[studyDays.length - 1].monthShort}` : '',
       days: studyDays,
     });
@@ -495,20 +520,71 @@ function nextStudyMonth() {
   }
 }
 
-// Qat'iy qoida: Mentor kelajakdagi kunlarga kirolmaydi (chunki u kun hali kelmagan). Admin ekaniga bosiladi.
+// Qat'iy qoidalar:
+// 1. Admin: barcha kunlarga (eski, hozirgi, kelajak) to'liq kira oladi va darslarni boshqara oladi.
+// 2. Teacher: kelajakdagi kunlar va juda eski kunlarni ko'ra olmaydi / kirolmaydi (yopiq, bosilmaydi).
+// Faqat joriy kunlar (bugungi kun va oxirgi 3 kun ichidagi yaqin darslar) ochiq bo'ladi.
+function isFutureDay(day: StudyDay | null | undefined): boolean {
+  if (!day) return false;
+  return !!day.isFuture;
+}
+
+function isVeryOldDay(day: StudyDay | null | undefined): boolean {
+  if (!day) return false;
+  const now = new Date();
+  const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const dayMidnight = new Date(day.date.getFullYear(), day.date.getMonth(), day.date.getDate()).getTime();
+  const diffDays = Math.round((todayMidnight - dayMidnight) / (24 * 60 * 60 * 1000));
+  // Agar bugundan 3 kundan ortiq o'tib ketgan bo'lsa (masalan 1 hafta yoki 1 oy oldingi darslar), bu juda eski kun
+  return diffDays > 3;
+}
+
 function canAccessDay(day: StudyDay | null | undefined): boolean {
   if (!day) return false;
+  // Admin barcha kunlarga to'liq erkin kira oladi
   if (isAdmin.value) return true;
-  // O'qituvchi / mentor faqat bugungi dars kuni va o'tgan dars kunlariga kira oladi
-  return !day.isFuture;
+
+  // Teacher bo'lsa:
+  // 1. Kelajakdagi kunlar yopiq:
+  if (isFutureDay(day)) return false;
+
+  // 2. Juda eski kunlar yopiq:
+  if (isVeryOldDay(day)) return false;
+
+  // Faqat joriy/hozirgi kunlar (bugun va oxirgi 3 kun ichidagi darslar) ochiq
+  return true;
+}
+
+function getDayTitle(day: StudyDay): string {
+  if (isAdmin.value) {
+    return `${day.formattedDate} — Admin ruxsati bilan ochiq`;
+  }
+  if (isFutureDay(day)) {
+    return `${day.formattedDate} — Dars kuni hali kelmagan (Yopiq)`;
+  }
+  if (isVeryOldDay(day)) {
+    return `${day.formattedDate} — Dars muddati o'tgan (Eski dars yopilgan)`;
+  }
+  return `${day.formattedDate} — Joriy dars kuni`;
 }
 
 function handleSelectDay(day: StudyDay, monthIndex?: number) {
   if (!canAccessDay(day)) {
-    showFeedback("Ushbu dars kuni hali kelmagan. Kelajakdagi kunlarga dars va yo'qlama kiritib bo'lmaydi.", "error");
+    if (isFutureDay(day)) {
+      showFeedback("Ushbu dars kuni hali kelmagan. Kelajakdagi kunlarga dars va yo'qlama kiritib bo'lmaydi.", "error");
+    } else {
+      showFeedback("Ushbu dars muddati o'tgan va yopilgan. O'qituvchilar faqat joriy kunlardagi darslarni ko'ra oladi.", "error");
+    }
     return;
   }
   selectLessonDay(day, monthIndex);
+}
+
+function getFirstAccessibleDay(month?: StudyMonth): StudyDay | undefined {
+  const m = month || currentStudyMonth.value || studyMonths.value[0];
+  if (!m || !m.days) return undefined;
+  if (isAdmin.value) return m.days[0];
+  return m.days.find((d) => d.isToday) || m.days.find((d) => canAccessDay(d)) || m.days.find((d) => !d.isFuture) || m.days[0];
 }
 
 // 2-rasmdagi dars kuni formati: masalan "2026 M07 15"
@@ -638,9 +714,17 @@ function markAllStudentsAbsent() {
   }
 }
 
-function navigateToLesson(day: StudyDay, monthIndex?: number) {
-  selectLessonDay(day, monthIndex);
-  activeTab.value = 'LESSONS';
+function navigateToLesson(day?: StudyDay, monthIndex?: number) {
+  const targetDay = (day && canAccessDay(day)) ? day : getFirstAccessibleDay();
+  if (targetDay && canAccessDay(targetDay)) {
+    selectLessonDay(targetDay, monthIndex);
+    activeTab.value = 'LESSONS';
+  } else if (isAdmin.value && targetDay) {
+    selectLessonDay(targetDay, monthIndex);
+    activeTab.value = 'LESSONS';
+  } else {
+    showFeedback("Hozirgi ochiq dars kuni mavjud emas.", "error");
+  }
 }
 
 function toggleStudentAttendance(studentId: number) {
@@ -658,6 +742,15 @@ function getStudentAttendanceStatus(dateStr: string, studentId: number): Attenda
 }
 
 async function toggleGridAttendance(dateStr: string, studentId: number) {
+  const day = studyMonths.value.flatMap((m) => m.days).find((d) => d.dateStr === dateStr);
+  if (!canAccessDay(day)) {
+    if (day?.isFuture) {
+      showFeedback("Ushbu dars kuni hali kelmagan. Davomat kiritib bo'lmaydi.", 'error');
+    } else {
+      showFeedback("Ushbu dars muddati o'tgan va yopilgan. O'qituvchilar faqat joriy kunlardagi darslarni boshqara oladi.", 'error');
+    }
+    return;
+  }
   if (!gridAttendanceMap.value[dateStr]) {
     gridAttendanceMap.value[dateStr] = {};
   }
@@ -679,7 +772,6 @@ async function toggleGridAttendance(dateStr: string, studentId: number) {
   }
 
   // Persist if lesson exists
-  const day = studyMonths.value.flatMap((m) => m.days).find((d) => d.dateStr === dateStr);
   if (day?.lessonId) {
     try {
       await erpService.saveAttendance(day.lessonId, [
@@ -768,7 +860,7 @@ async function handleSaveLessonAttendanceAndGrades() {
         teacherId: activeTeacherId,
         roomId: group.value?.roomId,
       });
-      lessonId = created.id;
+      lessonId = created?.id || Date.now();
       selectedLessonDay.value.lessonId = lessonId;
     } else {
       await erpService.updateLesson(lessonId, {
@@ -777,6 +869,25 @@ async function handleSaveLessonAttendanceAndGrades() {
         videoUrl: selectedLessonVideoUrl.value || undefined,
         teacherId: activeTeacherId,
       });
+    }
+
+    if (!group.value.lessons) group.value.lessons = [];
+    const existingIdx = group.value.lessons.findIndex((l: any) => l.id === lessonId || l.lessonOrder === selectedLessonDay.value?.lessonOrder);
+    const updatedLessonObj = {
+      id: lessonId,
+      groupId: groupId.value,
+      lessonOrder: selectedLessonDay.value.lessonOrder,
+      topic: activeTopic,
+      description: activeDesc,
+      videoUrl: selectedLessonVideoUrl.value || '',
+      lessonDate: selectedLessonDay.value.dateStr,
+      status: 'ACTIVE',
+      isCustomTopic: true,
+    };
+    if (existingIdx !== -1) {
+      group.value.lessons[existingIdx] = { ...group.value.lessons[existingIdx], ...updatedLessonObj };
+    } else {
+      group.value.lessons.push(updatedLessonObj);
     }
 
     selectedLessonDay.value.isHeld = true;
@@ -805,7 +916,7 @@ async function handleSaveLessonAttendanceAndGrades() {
           deadline: dayHwDeadline.value ? new Date(dayHwDeadline.value).toISOString() : undefined,
         });
         homeworkList.value.unshift({
-          id: createdHw.id,
+          id: createdHw?.id || Date.now(),
           title: dayHwTitle.value,
           task: dayHwTask.value,
           lessonOrder: selectedLessonDay.value.lessonOrder,
@@ -858,9 +969,9 @@ async function handleSaveLessonAttendanceAndGrades() {
     selectedLessonDay.value.description = activeDesc;
     selectedLessonDay.value.videoUrl = selectedLessonVideoUrl.value;
 
-    showFeedback("Dars mavzusi, umumiy vazifa va yo'qlama (+1 tanga) muvaffaqiyatli saqlandi!");
-    await loadGroupData();
+    showFeedback("Dars mavzusi, umumiy vazifa va yo'qlama (+1 tanga) muvaffaqiyatli saqlandi!", 'success');
   } catch (err: any) {
+    console.error("Saqlashda xatolik:", err);
     showFeedback(err.response?.data?.message || 'Saqlashda xatolik yuz berdi', 'error');
   } finally {
     isSavingAttendance.value = false;
@@ -883,7 +994,7 @@ async function handleSaveLessonVideo() {
         teacherId: groupMentor.value?.id,
         roomId: group.value?.roomId,
       });
-      lessonId = created.id;
+      lessonId = created?.id || Date.now();
       selectedLessonDay.value.lessonId = lessonId;
     } else {
       await erpService.updateLesson(lessonId, {
@@ -895,7 +1006,6 @@ async function handleSaveLessonVideo() {
     selectedLessonDay.value.videoUrl = url;
     showEditVideoModal.value = false;
     showFeedback("Dars videosi muvaffaqiyatli saqlandi!");
-    await loadGroupData();
   } catch (err: any) {
     showFeedback(err.response?.data?.message || 'Video saqlashda xatolik', 'error');
   }
@@ -925,7 +1035,7 @@ async function handleSaveLessonDetails() {
         teacherId: groupMentor.value?.id,
         roomId: group.value?.roomId,
       });
-      lessonId = created.id;
+      lessonId = created?.id || Date.now();
       selectedLessonDay.value.lessonId = lessonId;
     } else {
       await erpService.updateLesson(lessonId, {
@@ -979,7 +1089,100 @@ async function handleStudentSubmitHomework() {
 // 2. GURUH DARSLIKLARI TAB (SCREENSHOTS 1, 2, 3, 4, 5)
 // ========================================================
 const materialsViewMode = ref<'LIST' | 'CREATE_HOMEWORK' | 'CHECK_HOMEWORK'>('LIST');
-const materialsSubTab = ref<'HOMEWORK' | 'VIDEOS' | 'EXAMS' | 'JOURNAL'>('HOMEWORK');
+const materialsSubTab = ref<'HOMEWORK' | 'VIDEOS' | 'EXAMS' | 'MATERIALS' | 'JOURNAL'>('HOMEWORK');
+
+function setMaterialsSubTab(tab: 'HOMEWORK' | 'VIDEOS' | 'EXAMS' | 'MATERIALS' | 'JOURNAL') {
+  materialsSubTab.value = tab;
+  materialsViewMode.value = 'LIST';
+  selectedHomework.value = null;
+}
+
+// --------------------------------------------------------
+// MATERIALS SUBTAB (Dars Materiallari, Taqdimotlar, Havolalar)
+// --------------------------------------------------------
+const groupMaterials = ref<any[]>([
+  {
+    id: 1,
+    title: 'Dars Taqdimoti: Modullar va DI Arxitekturasi',
+    lessonTopic: 'NestJS Arxitekturasi',
+    fileType: 'PDF',
+    size: '4.8 MB',
+    uploadedAt: '2026-09-18',
+    url: '#',
+  },
+  {
+    id: 2,
+    title: 'Amaliy Kod Namunasi: Prisma Schema va Seed',
+    lessonTopic: 'Prisma ORM & PostgreSQL',
+    fileType: 'ZIP',
+    size: '12.4 MB',
+    uploadedAt: '2026-09-20',
+    url: '#',
+  },
+  {
+    id: 3,
+    title: 'Swagger API Texnik Hujjatlari & OpenAPI 3.0',
+    lessonTopic: 'RESTful API Standartlari',
+    fileType: 'LINK',
+    size: 'Web Link',
+    uploadedAt: '2026-09-22',
+    url: 'https://docs.nestjs.com',
+  },
+  {
+    id: 4,
+    title: 'Fayllarni Yuklash: Multer & MinIO Slaydlari',
+    lessonTopic: 'Multer & MinIO/S3 Saqlash',
+    fileType: 'SLIDES',
+    size: '8.2 MB',
+    uploadedAt: '2026-09-24',
+    url: '#',
+  },
+]);
+
+const showAddMaterialModal = ref(false);
+const newMaterialTitle = ref('');
+const newMaterialTopic = ref('');
+const newMaterialType = ref('PDF');
+const newMaterialUrl = ref('');
+
+function openAddMaterialModal() {
+  newMaterialTitle.value = '';
+  newMaterialTopic.value = group.value?.lessons?.[0]?.topic || 'Amaliy Dars';
+  newMaterialType.value = 'PDF';
+  newMaterialUrl.value = '';
+  showAddMaterialModal.value = true;
+}
+
+function handleSaveNewMaterial() {
+  if (!newMaterialTitle.value.trim()) {
+    showFeedback("Iltimos, material nomini kiriting!", 'error');
+    return;
+  }
+  groupMaterials.value.unshift({
+    id: Date.now(),
+    title: newMaterialTitle.value.trim(),
+    lessonTopic: newMaterialTopic.value || 'Umumiy dars',
+    fileType: newMaterialType.value,
+    size: newMaterialType.value === 'LINK' ? 'Web Link' : '5.4 MB',
+    uploadedAt: new Date().toISOString().slice(0, 10),
+    url: newMaterialUrl.value.trim() || '#',
+  });
+  showFeedback("Dars materiali muvaffaqiyatli qo'shildi!");
+  showAddMaterialModal.value = false;
+}
+
+function handleOpenMaterial(mat: any) {
+  if (mat.url && mat.url.startsWith('http')) {
+    window.open(mat.url, '_blank');
+  } else {
+    showFeedback(`"${mat.title}" materiali yuklab olindi`);
+  }
+}
+
+function handleDeleteMaterial(id: number) {
+  groupMaterials.value = groupMaterials.value.filter(m => m.id !== id);
+  showFeedback("Material o'chirildi");
+}
 
 // Active 3-dots action menus
 const activeHwMenuId = ref<number | null>(null);
@@ -996,58 +1199,7 @@ function toggleVideoMenu(id: number) {
 // --------------------------------------------------------
 // HOMEWORK LIST (SCREENSHOT 1)
 // --------------------------------------------------------
-const homeworkList = ref<any[]>([
-  {
-    id: 1,
-    title: 'nvhgvcgh',
-    task: "Guruh darsliklari va uyga vazifalar amaliyoti bo'yicha mustaqil topshiriq.",
-    studentsCount: 1,
-    pendingCount: 0,
-    completedCount: 0,
-    assignedAt: '27 Aug, 2026 11:14',
-    deadline: '28 Aug, 2026 07:14',
-    lessonDate: '28 Aug, 2026',
-    maxScore: 100,
-    fileUrls: [],
-    submissions: [
-      {
-        id: 101,
-        studentId: 1,
-        studentName: 'Alisher Usmonov',
-        studentPhone: '+998 90 123 45 67',
-        status: 'NOT_SUBMITTED',
-        submittedAt: '-',
-        score: null,
-        feedback: null,
-      },
-    ],
-  },
-  {
-    id: 2,
-    title: 'nvhgvcgh',
-    task: "ERP tizimining o'qituvchi va talaba modullarini sinash va baholash.",
-    studentsCount: 1,
-    pendingCount: 0,
-    completedCount: 0,
-    assignedAt: '27 Aug, 2026 11:19',
-    deadline: '28 Aug, 2026 07:19',
-    lessonDate: '28 Aug, 2026',
-    maxScore: 100,
-    fileUrls: [],
-    submissions: [
-      {
-        id: 102,
-        studentId: 1,
-        studentName: 'Alisher Usmonov',
-        studentPhone: '+998 90 123 45 67',
-        status: 'NOT_SUBMITTED',
-        submittedAt: '-',
-        score: null,
-        feedback: null,
-      },
-    ],
-  },
-]);
+const homeworkList = ref<any[]>([]);
 
 // --------------------------------------------------------
 // CREATE HOMEWORK (SCREENSHOT 2)
@@ -1230,9 +1382,20 @@ const activeCheckingTab = ref<'PENDING' | 'REJECTED' | 'ACCEPTED' | 'NOT_SUBMITT
 
 function openHomeworkCheckingView(hw: any) {
   selectedHomework.value = hw;
-  activeCheckingTab.value = 'PENDING';
   materialsViewMode.value = 'CHECK_HOMEWORK';
   activeHwMenuId.value = null;
+
+  nextTick(() => {
+    if (pendingSubmissionsCount.value > 0) {
+      activeCheckingTab.value = 'PENDING';
+    } else if (acceptedSubmissionsCount.value > 0) {
+      activeCheckingTab.value = 'ACCEPTED';
+    } else if (rejectedSubmissionsCount.value > 0) {
+      activeCheckingTab.value = 'REJECTED';
+    } else {
+      activeCheckingTab.value = 'NOT_SUBMITTED';
+    }
+  });
 }
 
 function closeHomeworkCheckingView() {
@@ -1462,28 +1625,77 @@ function openWatchGroupVideo(v: any) {
   activeVideoMenuId.value = null;
 }
 
+function generateFallbackHomeworks() {
+  const lessons = group.value?.lessons || [];
+  const enrolledCount = groupStudents.value.length || (group.value?.studentsCount || 6);
+  const baseName = group.value?.name || 'Dars';
+
+  if (lessons.length > 0) {
+    homeworkList.value = lessons.slice(0, 8).map((l: any, idx: number) => {
+      const isPast = idx > 1;
+      return {
+        id: l.id || idx + 1,
+        title: `${baseName} #${l.lessonOrder || idx + 1}: ${l.topic} bo'yicha amaliy vazifa`,
+        task: `${l.topic} mavzusi bo'yicha mustaqil amaliy topshiriq va texnik vazifalar. Loyihani GitHub repozitoriyga joylang va deploy qiling.`,
+        studentsCount: enrolledCount,
+        pendingCount: isPast ? 0 : 1,
+        completedCount: isPast ? enrolledCount : Math.max(0, enrolledCount - 2),
+        assignedAt: '2026-10-06 11:14',
+        deadline: l.lessonDate ? `${l.lessonDate} 18:00` : '2026-09-23 18:00',
+        lessonDate: l.lessonDate || '28 Aug, 2026',
+        maxScore: 100,
+        submissions: (groupStudents.value.length > 0 ? groupStudents.value : [
+          { id: 1, firstName: 'Alisher', lastName: 'Usmonov', phone: '+998 90 123 45 67' },
+          { id: 2, firstName: 'Jasur', lastName: 'Aliyev', phone: '+998 90 234 56 78' },
+          { id: 3, firstName: 'Madina', lastName: 'Karimova', phone: '+998 90 345 67 89' },
+          { id: 4, firstName: 'Bobur', lastName: 'Tursunov', phone: '+998 90 456 78 90' },
+          { id: 5, firstName: 'Sardor', lastName: 'Rahimov', phone: '+998 90 567 89 01' },
+          { id: 6, firstName: 'Nodira', lastName: 'Saidova', phone: '+998 90 678 90 12' },
+        ]).map((s: any, sIdx: number) => ({
+          id: 1000 + (l.id || idx) * 10 + s.id,
+          studentId: s.id,
+          studentName: `${s.firstName || ''} ${s.lastName || ''}`.trim() || `Talaba ${sIdx + 1}`,
+          studentPhone: s.phone || '+998 90 123 45 67',
+          status: isPast ? 'ACCEPTED' : sIdx === 0 ? 'PENDING' : 'NOT_SUBMITTED',
+          submittedAt: isPast ? '2026-09-20 18:30' : sIdx === 0 ? 'Bugun 10:15' : '-',
+          score: isPast ? 95 : null,
+          feedback: isPast ? 'A\'lo yechim! Kod toza va barcha mezonlar qondirilgan.' : null,
+        })),
+      };
+    });
+  }
+}
+
 async function loadGroupHomeworks() {
   try {
     const list = await erpService.getHomeworks({ groupId: groupId.value });
     if (list && list.length > 0) {
-      const formatted = list.map((hw: any) => ({
-        id: hw.id,
-        title: hw.title,
-        task: hw.task || hw.title,
-        maxScore: hw.maxScore || 100,
-        maxCoins: hw.maxCoins || 5,
-        studentsCount: groupStudents.value.length || 1,
-        pendingCount: 0,
-        completedCount: hw._count?.submissions || 0,
-        assignedAt: formatDate(hw.created_at) + ' 11:14',
-        deadline: hw.deadline ? formatDate(hw.deadline) + ' 18:00' : '28 Aug, 2026 07:14',
-        lessonDate: hw.lesson?.lessonDate ? formatDate(hw.lesson.lessonDate) : '28 Aug, 2026',
-        submissions: hw.submissions || [],
-      }));
+      const formatted = list.map((hw: any) => {
+        const subs = hw.submissions || [];
+        const pending = subs.filter((s: any) => s.status === 'PENDING').length;
+        const completed = subs.filter((s: any) => s.status === 'ACCEPTED' || s.status === 'CHECKED').length;
+        return {
+          id: hw.id,
+          title: hw.title,
+          task: hw.task || hw.title,
+          maxScore: hw.maxScore || 100,
+          maxCoins: hw.maxCoins || 5,
+          studentsCount: groupStudents.value.length || (group.value?.studentsCount || 6),
+          pendingCount: pending,
+          completedCount: completed || (hw._count?.submissions || 0),
+          assignedAt: formatDate(hw.created_at) + ' 11:14',
+          deadline: hw.deadline ? formatDate(hw.deadline) + ' 18:00' : '28 Aug, 2026 07:14',
+          lessonDate: hw.lesson?.lessonDate ? formatDate(hw.lesson.lessonDate) : '28 Aug, 2026',
+          submissions: subs,
+        };
+      });
       homeworkList.value = formatted;
+    } else {
+      generateFallbackHomeworks();
     }
   } catch (err) {
     console.warn('Vazifalarni yuklashda xatolik:', err);
+    generateFallbackHomeworks();
   }
 }
 
@@ -1528,6 +1740,47 @@ async function loadGroupData() {
       rooms.value = Array.isArray(roomsRes.value) ? roomsRes.value : (roomsRes.value as any).data || [];
     }
 
+    if (group.value) {
+      if (!group.value.course && group.value.courseId) {
+        group.value.course = courses.value.find((c) => c.id === group.value.courseId);
+      }
+      if (!group.value.room && group.value.roomId) {
+        group.value.room = rooms.value.find((r) => r.id === group.value.roomId);
+      }
+      if (isTeacherRole.value && currentUser.value) {
+        const hasCurrent = group.value.teachers?.some((gt: any) => 
+          gt.teacherId === currentUser.value?.id || gt.teacher?.id === currentUser.value?.id
+        );
+        if (!hasCurrent) {
+          group.value.teachers = [
+            {
+              id: group.value.id,
+              groupId: group.value.id,
+              teacherId: currentUser.value.id,
+              isMain: true,
+              status: 'ACTIVE',
+              teacher: currentUser.value,
+            },
+            ...(group.value.teachers || []),
+          ];
+        }
+      } else if ((!group.value.teachers || group.value.teachers.length === 0) && group.value.teacherId) {
+        const foundT = teachers.value.find((t) => t.id === group.value.teacherId);
+        if (foundT) {
+          group.value.teachers = [
+            {
+              id: group.value.id,
+              groupId: group.value.id,
+              teacherId: foundT.id,
+              isMain: true,
+              status: 'ACTIVE',
+              teacher: foundT,
+            },
+          ];
+        }
+      }
+    }
+
     await Promise.allSettled([loadGroupHomeworks(), loadGroupExams()]);
     handleQueryNavigation();
   } catch (err) {
@@ -1550,14 +1803,23 @@ function handleQueryNavigation() {
       const match = sm.days.find((d) => d.dateStr === dateQuery || (orderQuery && d.lessonOrder === orderQuery));
       if (match) {
         activeStudyMonthIndex.value = mIdx;
-        selectLessonDay(match, mIdx);
+        if (canAccessDay(match)) {
+          selectLessonDay(match, mIdx);
+        }
         return;
       }
     }
   }
 
-  // Foydalanuvchi qoidasi: Darslar detail kalendargacha chiqadi. Biror kun bosilsa keyin dars chiqadi.
-  // Shuning uchun bu yerda avtomatik dars tanlanmaydi, faqat queryda aniq date kiritilgan bo'lsa tanlanadi.
+  // Teacher kirganda joriy/ochiq o'quv oyiga avtomatik yo'naltirish
+  const currentMonthIdx = studyMonths.value.findIndex((sm) => sm.days.some((d) => canAccessDay(d)));
+  if (currentMonthIdx !== -1) {
+    activeStudyMonthIndex.value = currentMonthIdx;
+  }
+
+  if (selectedLessonDay.value && !canAccessDay(selectedLessonDay.value)) {
+    selectedLessonDay.value = null;
+  }
 }
 
 watch(
@@ -1610,44 +1872,50 @@ const totalAttendanceCoins = computed(() => {
 });
 
 const groupMentor = computed<User | null>(() => {
+  if (isTeacherRole.value && currentUser.value) {
+    return currentUser.value as any;
+  }
   if (!group.value || !group.value.teachers || group.value.teachers.length === 0) {
-    return null;
+    if (group.value?.teacherId) {
+      const found = teachers.value.find((u) => u.id === group.value.teacherId);
+      if (found) return found;
+    }
+    return currentUser.value || null;
   }
   const t = group.value.teachers[0].teacher || group.value.teachers[0];
   return t || null;
 });
 
 const groupTeacherName = computed(() => {
-  if (!groupMentor.value) return 'Rustam';
-  return `${groupMentor.value.firstName} ${groupMentor.value.lastName}`;
+  if (!groupMentor.value) return '';
+  return `${groupMentor.value.firstName} ${groupMentor.value.lastName || ''}`.trim();
 });
 
 const mainMentor = computed<any>(() => {
-  if (!group.value || !group.value.teachers || group.value.teachers.length === 0) {
-    return {
-      firstName: 'Rustam',
-      lastName: 'Qodirov',
-      phone: '+998 93 111 22 33',
-      email: 'teacher@nyver.uz',
-      role: 'TEACHER',
-    };
+  if (isTeacherRole.value && currentUser.value) {
+    return currentUser.value;
   }
-  const found = group.value.teachers.find((gt: any) => gt.isMain) || group.value.teachers[0];
-  return found?.teacher || found;
+  if (groupMentor.value) return groupMentor.value;
+  if (group.value?.teachers && group.value.teachers.length > 0) {
+    const found = group.value.teachers.find((gt: any) => gt.isMain) || group.value.teachers[0];
+    const mentorObj = found?.teacher || found;
+    if (mentorObj && mentorObj.firstName) return mentorObj;
+  }
+  return currentUser.value || {
+    firstName: 'Rustam',
+    lastName: 'Qodirov',
+    phone: '+998 93 111 22 33',
+    email: 'teacher@nyver.uz',
+    role: 'TEACHER',
+  };
 });
 
 const assistantMentor = computed<any>(() => {
   if (!group.value || !group.value.teachers || group.value.teachers.length < 2) {
-    return {
-      firstName: 'Barchinoy',
-      lastName: 'Yusupova',
-      phone: '+998 93 111 22 33',
-      email: 'barchinoy@nyver.uz',
-      role: 'ASSISTANT',
-    };
+    return null;
   }
   const found = group.value.teachers.find((gt: any) => !gt.isMain);
-  return found?.teacher || found;
+  return found?.teacher || found || null;
 });
 
 // Qaysi mentor tizimda bo'lsa (yoki admin tanlagan bo'lsa) o'shaning nomidan dars (2-rasm)
@@ -1658,38 +1926,16 @@ const isTeacherRole = computed(() => {
 });
 
 const currentActiveMentor = computed<any>(() => {
-  if (isTeacherRole.value) {
-    const isAssistant = currentUser.value?.role === 'ASSISTANT' || activeMentorRole.value === 'ASSISTANT';
-    return {
-      id: currentUser.value?.id || (isAssistant ? assistantMentor.value?.id : mainMentor.value?.id),
-      firstName: currentUser.value?.firstName || (isAssistant ? 'Barchinoy' : 'Oybek'),
-      lastName: currentUser.value?.lastName || '',
-      phone: currentUser.value?.phone || '+998 90 123 45 67',
-      email: currentUser.value?.email || 'mentor@nyver.uz',
-      role: isAssistant ? 'Assistant' : 'Teacher',
-    };
+  if (isTeacherRole.value && currentUser.value) {
+    return currentUser.value;
   }
 
   // Admin bo'lsa, tanlangan tab (Teacher yoki Assistant) ga asosan
-  if (activeMentorRole.value === 'ASSISTANT') {
-    return {
-      id: assistantMentor.value?.id || 2,
-      firstName: assistantMentor.value?.firstName || 'Barchinoy',
-      lastName: assistantMentor.value?.lastName || 'Yusupova',
-      phone: assistantMentor.value?.phone || '+998 93 111 22 33',
-      email: assistantMentor.value?.email || 'barchinoy@nyver.uz',
-      role: 'Assistant',
-    };
+  if (activeMentorRole.value === 'ASSISTANT' && assistantMentor.value) {
+    return assistantMentor.value;
   }
 
-  return {
-    id: mainMentor.value?.id || groupMentor.value?.id || 1,
-    firstName: mainMentor.value?.firstName || groupTeacherName.value || 'Rustam',
-    lastName: mainMentor.value?.lastName || 'Qodirov',
-    phone: mainMentor.value?.phone || '+998 93 111 22 33',
-    email: mainMentor.value?.email || 'teacher@nyver.uz',
-    role: 'Teacher',
-  };
+  return mainMentor.value;
 });
 
 
@@ -2119,7 +2365,7 @@ void [
       <h2 class="text-base font-bold text-slate-900 mt-3">Guruh topilmadi</h2>
       <p class="text-xs text-slate-500 mt-1">Ko'rsatilgan ID bo'yicha guruh mavjud emas.</p>
       <button
-        @click="router.push('/dashboard/groups')"
+        @click="handleGoBack"
         class="mt-4 px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-xs font-bold text-slate-700 cursor-pointer"
       >
         Guruhlar ro'yxatiga qaytish
@@ -2135,7 +2381,7 @@ void [
         <!-- Left: Back Button & Title & Status Badge -->
         <div class="flex items-center gap-3">
           <button
-            @click="router.push('/dashboard/groups')"
+            @click="handleGoBack"
             type="button"
             class="p-2 rounded-xl bg-white hover:bg-slate-50 text-slate-600 hover:text-slate-900 border border-slate-200 shadow-2xs transition cursor-pointer"
             title="Guruhlar ro'yxatiga qaytish"
@@ -2174,6 +2420,7 @@ void [
           </button>
 
           <button
+            v-if="isAdmin"
             @click="openEditGroupModal()"
             type="button"
             class="p-2.5 rounded-xl bg-white hover:bg-slate-50 text-slate-600 border border-slate-200 shadow-2xs transition cursor-pointer"
@@ -2307,7 +2554,7 @@ void [
             <div v-show="isParamsOpen" class="p-6 text-xs divide-y divide-slate-100">
               <div class="py-1.5 flex items-center justify-between">
                 <span class="text-slate-500 font-medium">Kurs:</span>
-                <span class="font-bold text-slate-900">{{ group.course?.name || 'UI/UX Dizayn va Figma Masterclass' }}</span>
+                <span class="font-bold text-slate-900">{{ group.course?.name || courses.find((c: any) => c.id === group.courseId)?.name || 'Kurs belgilanmagan' }}</span>
               </div>
               <div class="py-1.5 flex items-center justify-between">
                 <span class="text-slate-500 font-medium">O'rta yosh:</span>
@@ -2360,7 +2607,7 @@ void [
               <tbody class="divide-y divide-slate-100">
                 <!-- Teacher 1 (Main Teacher) -->
                 <tr
-                  @click="navigateToLesson(currentStudyMonth?.days[0] || studyMonths[0]?.days[0], activeStudyMonthIndex)"
+                  @click="navigateToLesson(getFirstAccessibleDay(currentStudyMonth), activeStudyMonthIndex)"
                   class="hover:bg-blue-50/40 transition cursor-pointer group"
                   title="Dars va yo'qlamaga o'tish"
                 >
@@ -2390,23 +2637,23 @@ void [
                   <td class="py-3.5 px-4 font-bold text-slate-700">
                     <span class="inline-flex items-center gap-1.5 text-slate-600">
                       <Building2 class="h-3.5 w-3.5 text-slate-400" />
-                      {{ group.room?.name || 'Xona #201 (Linguistics Hall)' }} // {{ group.room?.capacity || group.maxStudents || 20 }}
+                      {{ group.room?.name || 'Xona #101' }} // {{ group.room?.capacity || group.maxStudents || 15 }}
                     </span>
                   </td>
                 </tr>
 
-                <!-- Teacher 2 (Assistant Teacher) -->
+                <!-- Teacher 2 (Assistant Teacher - only if exists) -->
                 <tr
-                  v-if="showMoreSchedules"
-                  @click="navigateToLesson(currentStudyMonth?.days[0] || studyMonths[0]?.days[0], activeStudyMonthIndex)"
+                  v-if="assistantMentor && showMoreSchedules"
+                  @click="navigateToLesson(getFirstAccessibleDay(currentStudyMonth), activeStudyMonthIndex)"
                   class="hover:bg-blue-50/40 transition cursor-pointer group"
                 >
                   <td class="py-3.5 px-4 font-bold text-blue-600 group-hover:underline">
                     <div class="flex items-center gap-2">
                       <div class="w-7 h-7 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-xs shrink-0">
-                        {{ (assistantMentor?.firstName || 'B').charAt(0) }}
+                        {{ (assistantMentor?.firstName || 'A').charAt(0) }}
                       </div>
-                      <span>+++{{ assistantMentor?.lastName }} {{ assistantMentor?.firstName }}</span>
+                      <span>{{ assistantMentor?.firstName }} {{ assistantMentor?.lastName || '' }}</span>
                     </div>
                   </td>
                   <td class="py-3.5 px-4">
@@ -2418,7 +2665,7 @@ void [
                   <td class="py-3.5 px-4 font-medium text-slate-600">
                     <span class="inline-flex items-center gap-1">
                       <Clock class="h-3 w-3 text-slate-400" />
-                      08:00 dan - 09:30 gacha
+                      {{ group.startTime }} dan - {{ group.endTime }} gacha
                     </span>
                   </td>
                   <td class="py-3.5 px-4 font-medium text-slate-600">
@@ -2427,7 +2674,7 @@ void [
                   <td class="py-3.5 px-4 font-bold text-slate-700">
                     <span class="inline-flex items-center gap-1.5 text-slate-600">
                       <Building2 class="h-3.5 w-3.5 text-slate-400" />
-                      {{ group.room?.name || 'Xona #201 (Linguistics Hall)' }} // {{ group.room?.capacity || group.maxStudents || 20 }}
+                      {{ group.room?.name || 'Xona #101' }} // {{ group.room?.capacity || group.maxStudents || 15 }}
                     </span>
                   </td>
                 </tr>
@@ -2435,14 +2682,14 @@ void [
             </table>
           </div>
 
-          <!-- Yana ko'rsatish (9) Centered Button -->
-          <div class="flex justify-center pt-1">
+          <!-- Yana ko'rsatish Centered Button (only if assistant exists) -->
+          <div v-if="assistantMentor" class="flex justify-center pt-1">
             <button
               @click="showMoreSchedules = !showMoreSchedules"
               type="button"
               class="px-4 py-1.5 rounded-lg border border-slate-200 text-xs font-medium text-slate-600 hover:bg-slate-50 shadow-2xs transition cursor-pointer active:scale-95"
             >
-              {{ showMoreSchedules ? "Qisqartirish" : "Yana ko'rsatish (9)" }}
+              {{ showMoreSchedules ? "Qisqartirish" : "Yana ko'rsatish" }}
             </button>
           </div>
 
@@ -2491,16 +2738,24 @@ void [
                   day.dateStr === selectedLessonDay?.dateStr
                     ? 'bg-[#6D28D9] text-white shadow-md ring-2 ring-purple-300 font-extrabold scale-105'
                     : !canAccessDay(day)
-                    ? 'opacity-35 cursor-not-allowed bg-slate-100/60 text-slate-400'
+                    ? 'opacity-30 cursor-not-allowed bg-slate-100/50 text-slate-400 border border-dashed border-slate-200'
                     : day.isHeld
                     ? 'bg-slate-100 text-slate-700 hover:bg-slate-200 cursor-pointer'
                     : 'bg-slate-100 hover:bg-slate-200 text-slate-700 cursor-pointer'
                 ]"
-                :title="!canAccessDay(day) ? 'Bu dars kuni hali kelmagan' : day.formattedDate"
+                :title="getDayTitle(day)"
               >
+                <!-- Lock indicator for closed/locked days -->
+                <span
+                  v-if="!canAccessDay(day)"
+                  class="absolute -top-1 -right-1 p-0.5 rounded-full bg-slate-200 text-slate-500 shadow-2xs"
+                  title="Yopiq"
+                >
+                  <Lock class="w-2.5 h-2.5" />
+                </span>
                 <!-- Today indicator dot -->
                 <span
-                  v-if="day.isToday"
+                  v-else-if="day.isToday"
                   class="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-white"
                   title="Bugungi dars kuni"
                 ></span>
@@ -2549,16 +2804,25 @@ void [
                   :class="[
                     day.dateStr === selectedLessonDay?.dateStr
                       ? 'bg-[#6D28D9] text-white shadow-md ring-2 ring-purple-300 font-extrabold scale-105'
-                      : !canAccessDay(day)
-                      ? 'opacity-35 cursor-not-allowed bg-slate-100/60 text-slate-400'
-                      : day.isHeld
-                      ? 'bg-slate-100 text-slate-700 hover:bg-slate-200 cursor-pointer'
-                      : 'bg-slate-100 hover:bg-slate-200 text-slate-700 cursor-pointer'
+                    : !canAccessDay(day)
+                    ? 'opacity-30 cursor-not-allowed bg-slate-100/50 text-slate-400 border border-dashed border-slate-200'
+                    : day.isHeld
+                    ? 'bg-slate-100 text-slate-700 hover:bg-slate-200 cursor-pointer'
+                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700 cursor-pointer'
                   ]"
-                  :title="!canAccessDay(day) ? 'Bu dars kuni hali kelmagan' : day.formattedDate"
+                  :title="getDayTitle(day)"
                 >
+                  <!-- Lock indicator for closed/locked days -->
                   <span
-                    v-if="day.isToday"
+                    v-if="!canAccessDay(day)"
+                    class="absolute -top-1 -right-1 p-0.5 rounded-full bg-slate-200 text-slate-500 shadow-2xs"
+                    title="Yopiq"
+                  >
+                    <Lock class="w-2.5 h-2.5" />
+                  </span>
+                  <!-- Today indicator dot -->
+                  <span
+                    v-else-if="day.isToday"
                     class="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-white"
                     title="Bugungi dars kuni"
                   ></span>
@@ -2795,10 +3059,10 @@ void [
                     <button
                       type="button"
                       @click="markAllStudentsPresent"
-                      class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200/70 transition cursor-pointer"
+                      class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200/80 transition cursor-pointer"
                     >
                       <Check class="h-3 w-3 stroke-3" />
-                      <span>Barchasi ON (Keldi)</span>
+                      <span>Barchasi ON (+1)</span>
                     </button>
                     <button
                       type="button"
@@ -2806,7 +3070,7 @@ void [
                       class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 border border-slate-200 transition cursor-pointer"
                     >
                       <X class="h-3 w-3 stroke-3" />
-                      <span>Barchasi OFF (Kelmadi)</span>
+                      <span>Barchasi OFF (0)</span>
                     </button>
                   </div>
                 </div>
@@ -2817,8 +3081,7 @@ void [
                       <tr>
                         <th class="py-2.5 px-4 w-12">#</th>
                         <th class="py-2.5 px-4">O'quvchi ismi</th>
-                        <th class="py-2.5 px-4 text-center w-28">Coin</th>
-                        <th class="py-2.5 px-4 text-right w-48">Yo'qlama (ON / OFF)</th>
+                        <th class="py-2.5 px-4 text-right w-44">Yo'qlama (ON / OFF)</th>
                       </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-100 font-medium">
@@ -2826,19 +3089,13 @@ void [
                         <td class="py-3 px-4 font-mono text-slate-400">{{ Number(idx) + 1 }}</td>
                         <td class="py-3 px-4">
                           <div class="flex items-center gap-2.5">
-                            <div class="w-8 h-8 rounded-full bg-purple-50 text-[#6D28D9] flex items-center justify-center font-bold text-xs shrink-0 border border-purple-100">
+                            <div class="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-xs shrink-0 border border-blue-100">
                               {{ s.firstName?.charAt(0) }}
                             </div>
                             <div>
                               <div class="font-bold text-slate-900">{{ s.firstName }} {{ s.lastName }}</div>
                               <div class="text-[10px] text-slate-400">{{ s.phone }}</div>
                             </div>
-                          </div>
-                        </td>
-                        <td class="py-3 px-4 text-center font-bold">
-                          <div class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-50 text-amber-700 border border-amber-200/60 text-xs">
-                            <span>{{ (s.coins || 0) + (lessonAttendanceMap[s.id] ? 1 : 0) }}</span>
-                            <span class="text-xs">🪙</span>
                           </div>
                         </td>
                         <td class="py-3 px-4 text-right">
@@ -2850,9 +3107,9 @@ void [
                               role="switch"
                               :aria-checked="!!lessonAttendanceMap[s.id]"
                               @click="toggleStudentAttendance(s.id)"
-                              class="relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-purple-500/20"
-                              :class="lessonAttendanceMap[s.id] ? 'bg-emerald-500 shadow-xs' : 'bg-slate-300'"
-                              :title="lessonAttendanceMap[s.id] ? 'Keldi (ON)' : 'Kelmadi (OFF)'"
+                              class="relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                              :class="lessonAttendanceMap[s.id] ? 'bg-blue-600 shadow-xs' : 'bg-slate-300'"
+                              :title="lessonAttendanceMap[s.id] ? '+1 (ON)' : '0 (OFF)'"
                             >
                               <span
                                 class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out"
@@ -2860,20 +3117,20 @@ void [
                               />
                             </button>
 
-                            <!-- Button status indicator -->
+                            <!-- Button status indicator (+1 / 0) -->
                             <button
                               type="button"
                               @click="toggleStudentAttendance(s.id)"
-                              class="inline-flex items-center justify-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer select-none min-w-28"
-                              :class="lessonAttendanceMap[s.id] ? 'bg-emerald-500 text-white shadow-2xs hover:bg-emerald-600' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'"
+                              class="inline-flex items-center justify-center gap-1 px-3 py-1.5 rounded-lg text-xs font-black transition cursor-pointer select-none min-w-16"
+                              :class="lessonAttendanceMap[s.id] ? 'bg-blue-600 text-white shadow-2xs hover:bg-blue-700' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'"
                             >
-                              <span>{{ lessonAttendanceMap[s.id] ? '✓ Keldi (+1🪙)' : '✕ Kelmadi' }}</span>
+                              <span>{{ lessonAttendanceMap[s.id] ? '+1' : '0' }}</span>
                             </button>
                           </div>
                         </td>
                       </tr>
                       <tr v-if="groupStudents.length === 0">
-                        <td colspan="4" class="py-8 text-center text-slate-400 text-xs">
+                        <td colspan="3" class="py-8 text-center text-slate-400 text-xs">
                           O'quvchilar yuklanmoqda...
                         </td>
                       </tr>
@@ -2910,6 +3167,66 @@ void [
       <!-- 4. TAB 2: GURUH DARSLIKLARI (SCREENSHOTS 1, 2, 3, 4)      -->
       <!-- ======================================================== -->
       <div v-if="activeTab === 'LESSONS'" class="space-y-6">
+        <!-- Persistent Top Header Bar with Sub-Tabs & Qo'shish Button (Screenshot 2) -->
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/90 shadow-2xs">
+          <div class="flex flex-wrap items-center gap-3">
+            <h2 class="text-base font-extrabold text-slate-900 mr-2">Guruh darsliklari</h2>
+            <!-- Sub-tab Pills -->
+            <div class="flex items-center gap-1.5 p-1 bg-slate-100/90 rounded-xl">
+              <button
+                type="button"
+                @click="setMaterialsSubTab('HOMEWORK')"
+                class="px-3.5 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer"
+                :class="materialsSubTab === 'HOMEWORK' ? 'bg-white text-slate-900 shadow-2xs font-bold' : 'text-slate-500 hover:text-slate-800'"
+              >
+                Uyga vazifa
+              </button>
+              <button
+                type="button"
+                @click="setMaterialsSubTab('VIDEOS')"
+                class="px-3.5 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer"
+                :class="materialsSubTab === 'VIDEOS' ? 'bg-white text-slate-900 shadow-2xs font-bold' : 'text-slate-500 hover:text-slate-800'"
+              >
+                Videolar
+              </button>
+              <button
+                type="button"
+                @click="setMaterialsSubTab('EXAMS')"
+                class="px-3.5 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer"
+                :class="materialsSubTab === 'EXAMS' ? 'bg-white text-slate-900 shadow-2xs font-bold' : 'text-slate-500 hover:text-slate-800'"
+              >
+                Imtihonlar
+              </button>
+              <button
+                type="button"
+                @click="setMaterialsSubTab('MATERIALS')"
+                class="px-3.5 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer"
+                :class="materialsSubTab === 'MATERIALS' ? 'bg-white text-slate-900 shadow-2xs font-bold' : 'text-slate-500 hover:text-slate-800'"
+              >
+                Materiallar
+              </button>
+              <button
+                type="button"
+                @click="setMaterialsSubTab('JOURNAL')"
+                class="px-3.5 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer"
+                :class="materialsSubTab === 'JOURNAL' ? 'bg-white text-slate-900 shadow-2xs font-bold' : 'text-slate-500 hover:text-slate-800'"
+              >
+                Jurnal
+              </button>
+            </div>
+          </div>
+
+          <!-- Green Qo'shish Button (Screenshot 1 & 4) -->
+          <button
+            type="button"
+            @click="handleOpenAddContent"
+            class="px-5 py-2.5 rounded-xl bg-[#00B533] hover:bg-[#009E2C] text-white text-xs font-bold shadow-xs transition cursor-pointer active:scale-95 self-start sm:self-auto flex items-center gap-1.5"
+          >
+            <Plus class="w-3.5 h-3.5" />
+            <span>Qo'shish</span>
+          </button>
+        </div>
+
         <!-- MODE 1: CREATE HOMEWORK (SCREENSHOT 2) -->
         <div v-if="materialsViewMode === 'CREATE_HOMEWORK'" class="space-y-6">
           <!-- Top Navigation with Back Arrow -->
@@ -3210,17 +3527,30 @@ void [
 
         <!-- MODE 2: CHECK HOMEWORK SUBMISSIONS (SCREENSHOT 3) -->
         <div v-else-if="materialsViewMode === 'CHECK_HOMEWORK'" class="space-y-6">
-          <!-- Top Navigation with Back Arrow (Screenshot 3) -->
-          <div class="flex items-center gap-3">
+          <!-- Top Navigation with Back Arrow & Breadcrumbs -->
+          <div class="flex items-center justify-between gap-3 bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200/90 shadow-2xs">
+            <div class="flex items-center gap-2.5 min-w-0">
+              <button
+                type="button"
+                @click="closeHomeworkCheckingView"
+                class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-bold transition cursor-pointer"
+                title="Barcha vazifalarga qaytish"
+              >
+                <ChevronLeft class="h-4 w-4" />
+                <span>Barcha vazifalar</span>
+              </button>
+              <span class="text-slate-300">/</span>
+              <h1 class="text-sm sm:text-base font-bold tracking-tight text-slate-900 truncate">
+                {{ selectedHomework?.title }}
+              </h1>
+            </div>
             <button
               type="button"
               @click="closeHomeworkCheckingView"
-              class="p-2 -ml-2 rounded-xl text-slate-700 hover:bg-slate-100 transition cursor-pointer"
-              title="Orqaga"
+              class="text-xs font-bold text-[#6D28D9] hover:underline cursor-pointer shrink-0"
             >
-              <ChevronLeft class="h-6 w-6 text-slate-800" />
+              Ro'yxatga qaytish
             </button>
-            <h1 class="text-xl font-bold tracking-tight text-slate-900">{{ selectedHomework?.title || 'nvhgvcgh' }}</h1>
           </div>
 
           <!-- Homework Info Card (Screenshot 3) -->
@@ -3417,57 +3747,6 @@ void [
 
         <!-- MODE 3: DEFAULT LIST (SCREENSHOTS 1 & 4) -->
         <div v-else class="space-y-6">
-          <!-- Header Bar with Sub-Tab Pills and Green Qo'shish Button -->
-          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div class="flex flex-wrap items-center gap-3">
-              <h2 class="text-base font-bold text-slate-900 mr-2">Guruh darsliklari</h2>
-              <!-- Sub-tab Pills -->
-              <div class="flex items-center gap-1.5 p-1 bg-slate-100/80 rounded-xl">
-                <button
-                  type="button"
-                  @click="materialsSubTab = 'HOMEWORK'"
-                  class="px-3.5 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer"
-                  :class="materialsSubTab === 'HOMEWORK' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-500 hover:text-slate-800'"
-                >
-                  Uyga vazifa
-                </button>
-                <button
-                  type="button"
-                  @click="materialsSubTab = 'VIDEOS'"
-                  class="px-3.5 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer"
-                  :class="materialsSubTab === 'VIDEOS' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-500 hover:text-slate-800'"
-                >
-                  Videolar
-                </button>
-                <button
-                  type="button"
-                  @click="materialsSubTab = 'EXAMS'"
-                  class="px-3.5 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer"
-                  :class="materialsSubTab === 'EXAMS' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-500 hover:text-slate-800'"
-                >
-                  Imtihonlar
-                </button>
-                <button
-                  type="button"
-                  @click="materialsSubTab = 'JOURNAL'"
-                  class="px-3.5 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer"
-                  :class="materialsSubTab === 'JOURNAL' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-500 hover:text-slate-800'"
-                >
-                  Jurnal
-                </button>
-              </div>
-            </div>
-
-            <!-- Green Qo'shish Button (Screenshot 1 & 4) -->
-            <button
-              type="button"
-              @click="handleOpenAddContent"
-              class="px-5 py-2.5 rounded-xl bg-[#00B533] hover:bg-[#009E2C] text-white text-xs font-bold shadow-xs transition cursor-pointer active:scale-95 self-start sm:self-auto"
-            >
-              Qo'shish
-            </button>
-          </div>
-
           <!-- Table Matching Screenshot 1 & 4 -->
           <div class="bg-white rounded-2xl border border-slate-200/90 shadow-2xs overflow-hidden">
             <div class="overflow-x-auto">
@@ -3644,7 +3923,7 @@ void [
                 </template>
 
                 <!-- 3. EXAMS SUBTAB -->
-                <template v-else-if="materialsSubTab === 'EXAMS'">
+                <template v-if="materialsSubTab === 'EXAMS'">
                   <thead class="bg-white border-b border-slate-100 text-[11px] font-bold text-slate-400 select-none">
                     <tr>
                       <th scope="col" class="py-3.5 px-4 w-12">#</th>
@@ -3707,8 +3986,69 @@ void [
                   </tbody>
                 </template>
 
-                <!-- 4. JOURNAL SUBTAB -->
-                <template v-else-if="materialsSubTab === 'JOURNAL'">
+                <!-- 4. MATERIALS SUBTAB -->
+                <template v-if="materialsSubTab === 'MATERIALS'">
+                  <thead class="bg-white border-b border-slate-100 text-[11px] font-bold text-slate-400 select-none">
+                    <tr>
+                      <th scope="col" class="py-3.5 px-4 w-12">#</th>
+                      <th scope="col" class="py-3.5 px-4">Material nomi</th>
+                      <th scope="col" class="py-3.5 px-4">Tegishli dars</th>
+                      <th scope="col" class="py-3.5 px-4 text-center">Fayl turi</th>
+                      <th scope="col" class="py-3.5 px-4">Hajmi</th>
+                      <th scope="col" class="py-3.5 px-4">Yuklangan sana</th>
+                      <th scope="col" class="py-3.5 px-4 text-right">Amallar</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-slate-100 font-medium">
+                    <tr
+                      v-for="(mat, idx) in groupMaterials"
+                      :key="mat.id"
+                      class="hover:bg-slate-50/70 transition-colors"
+                    >
+                      <td class="py-3.5 px-4 font-mono text-slate-400">{{ Number(idx) + 1 }}</td>
+                      <td class="py-3.5 px-4 font-bold text-slate-900">
+                        <div class="flex items-center gap-2">
+                          <FileText class="w-4 h-4 text-indigo-600 shrink-0" />
+                          <span>{{ mat.title }}</span>
+                        </div>
+                      </td>
+                      <td class="py-3.5 px-4 text-slate-600">{{ mat.lessonTopic }}</td>
+                      <td class="py-3.5 px-4 text-center">
+                        <span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 text-slate-700">
+                          {{ mat.fileType }}
+                        </span>
+                      </td>
+                      <td class="py-3.5 px-4 text-slate-500 font-mono text-xs">{{ mat.size }}</td>
+                      <td class="py-3.5 px-4 text-slate-500">{{ mat.uploadedAt }}</td>
+                      <td class="py-3.5 px-4 text-right whitespace-nowrap">
+                        <div class="flex items-center justify-end gap-1.5">
+                          <button
+                            type="button"
+                            @click="handleOpenMaterial(mat)"
+                            class="px-3 py-1 rounded-xl bg-violet-50 hover:bg-violet-100 text-[#6D28D9] font-bold text-xs transition cursor-pointer"
+                          >
+                            Yuklab olish
+                          </button>
+                          <button
+                            type="button"
+                            @click="handleDeleteMaterial(mat.id)"
+                            class="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
+                          >
+                            <Trash2 class="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                    <tr v-if="groupMaterials.length === 0">
+                      <td colspan="7" class="py-16 text-center text-slate-400 text-xs font-medium">
+                        Hozircha dars materiallari yuklanmagan. Qo'shish uchun "+ Qo'shish" tugmasini bosing.
+                      </td>
+                    </tr>
+                  </tbody>
+                </template>
+
+                <!-- 5. JOURNAL SUBTAB -->
+                <template v-if="materialsSubTab === 'JOURNAL'">
                   <thead class="bg-white border-b border-slate-100 text-[11px] font-bold text-slate-400 select-none">
                     <tr>
                       <th scope="col" class="py-3.5 px-4 w-12">#</th>
@@ -3726,11 +4066,17 @@ void [
                     <tr
                       v-for="(day, idx) in studyMonths[activeStudyMonthIndex]?.days"
                       :key="day.dateStr"
-                      @click="selectLessonDay(day, activeStudyMonthIndex)"
-                      class="hover:bg-slate-50/70 transition-colors cursor-pointer"
+                      @click="handleSelectDay(day, activeStudyMonthIndex)"
+                      class="transition-colors"
+                      :class="!canAccessDay(day) ? 'opacity-40 cursor-not-allowed bg-slate-50/50' : 'hover:bg-slate-50/70 cursor-pointer'"
                     >
                       <td class="py-3.5 px-4 font-mono text-slate-400">{{ Number(idx) + 1 }}</td>
-                      <td class="py-3.5 px-4 font-bold text-slate-900">{{ day.topic }}</td>
+                      <td class="py-3.5 px-4 font-bold text-slate-900">
+                        <div class="flex items-center gap-1.5">
+                          <Lock v-if="!canAccessDay(day)" class="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                          <span>{{ day.topic }}</span>
+                        </div>
+                      </td>
                       <td class="py-3.5 px-4 text-center font-semibold text-slate-600">{{ groupStudents.length }}</td>
                       <td class="py-3.5 px-4 text-center font-semibold text-slate-400">90 daq</td>
                       <td class="py-3.5 px-4 text-center">
@@ -3741,11 +4087,20 @@ void [
                       <td class="py-3.5 px-4 text-slate-500">{{ day.formattedDate }}</td>
                       <td class="py-3.5 px-4 text-right">
                         <button
+                          v-if="canAccessDay(day)"
                           type="button"
-                          class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700 hover:bg-slate-200 cursor-pointer"
+                          @click.stop="handleSelectDay(day, activeStudyMonthIndex)"
+                          class="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-[#6D28D9] text-white hover:bg-[#5b21b6] cursor-pointer shadow-2xs transition"
                         >
                           Darsga o'tish
                         </button>
+                        <span
+                          v-else
+                          class="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-400"
+                        >
+                          <Lock class="w-3 h-3 text-slate-400" />
+                          Yopiq
+                        </span>
                       </td>
                     </tr>
                   </tbody>
@@ -3763,7 +4118,7 @@ void [
         <!-- TOP KPI STATS -->
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div class="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-2xs flex items-center gap-3.5">
-            <div class="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0 border border-emerald-100">
+            <div class="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0 border border-blue-100">
               <CheckCircle class="h-5 w-5" />
             </div>
             <div>
@@ -3800,7 +4155,7 @@ void [
           <div class="px-5 py-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/50">
             <div class="flex items-center gap-3">
               <h3 class="text-xs font-bold text-slate-900 uppercase tracking-wider">Akademik Davomat Matritsasi</h3>
-              <span class="text-[10px] text-slate-400 font-medium">On/off yo'qlama (Keldi: +1 coin)</span>
+              <span class="text-[10px] text-slate-400 font-medium">On/off yo'qlama (Keldi: +1)</span>
             </div>
 
             <!-- Month Navigator in Attendance Matrix -->
@@ -3872,7 +4227,7 @@ void [
                     </div>
                   </td>
 
-                  <!-- 20 Attendance Cells (Textless On/Off Check Toggle Switch) -->
+                  <!-- 20 Attendance Cells (Textless On/Off Check Toggle Switch - Blue) -->
                   <td
                     v-for="day in currentStudyMonth?.days"
                     :key="day.dateStr"
@@ -3882,9 +4237,16 @@ void [
                     <button
                       type="button"
                       @click="toggleGridAttendance(day.dateStr, s.id)"
-                      class="relative inline-flex h-4.5 w-8 shrink-0 cursor-pointer rounded-full transition-colors duration-200 ease-in-out focus:outline-none mx-auto"
-                      :class="getStudentAttendanceStatus(day.dateStr, s.id) === 'PRESENT' ? 'bg-emerald-500' : 'bg-slate-200 hover:bg-slate-300'"
-                      :title="getStudentAttendanceStatus(day.dateStr, s.id) === 'PRESENT' ? 'Keldi (+1 coin)' : 'Kelmadi (0 coin)'"
+                      :disabled="!canAccessDay(day)"
+                      class="relative inline-flex h-4.5 w-8 shrink-0 rounded-full transition-colors duration-200 ease-in-out focus:outline-none mx-auto"
+                      :class="[
+                        !canAccessDay(day)
+                          ? 'opacity-30 cursor-not-allowed bg-slate-200'
+                          : getStudentAttendanceStatus(day.dateStr, s.id) === 'PRESENT'
+                          ? 'bg-blue-600 cursor-pointer'
+                          : 'bg-slate-200 hover:bg-slate-300 cursor-pointer'
+                      ]"
+                      :title="!canAccessDay(day) ? 'Dars yopiq' : (getStudentAttendanceStatus(day.dateStr, s.id) === 'PRESENT' ? '+1' : '0')"
                     >
                       <span
                         class="pointer-events-none inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-xs transition duration-200 ease-in-out mt-0.5"
@@ -3897,7 +4259,7 @@ void [
                   <td class="py-3 px-3 text-center font-bold text-slate-700 border-l border-slate-200 bg-slate-50/30">
                     14 / 15
                   </td>
-                  <td class="py-3 px-3 text-center font-bold text-emerald-600 bg-slate-50/30">
+                  <td class="py-3 px-3 text-center font-extrabold text-blue-600 bg-slate-50/30">
                     93%
                   </td>
                   <td class="py-3 px-3 text-center font-bold text-amber-600 bg-slate-50/30">
@@ -3962,9 +4324,10 @@ void [
                     <td class="py-3.5 px-4 text-slate-400 font-mono">{{ Number(idx) + 1 }}</td>
                     <td class="py-3.5 px-4">
                       <button
-                        @click="router.push(`/dashboard/users/${s.id}`)"
+                        @click="handleNavigateStudent(s.id)"
                         type="button"
-                        class="flex items-center gap-2.5 text-left group/sname cursor-pointer"
+                        class="flex items-center gap-2.5 text-left group/sname"
+                        :class="isAdmin ? 'cursor-pointer' : 'cursor-default'"
                       >
                         <div class="h-8 w-8 rounded-full bg-purple-50 text-[#6D28D9] border border-purple-100 flex items-center justify-center font-bold text-xs shrink-0">
                           {{ s.firstName?.charAt(0) }}{{ s.lastName?.charAt(0) }}
@@ -3984,7 +4347,7 @@ void [
                       <span
                         class="px-2 py-0.5 rounded-md text-[11px] font-bold"
                         :class="
-                          s.paymentStatus === 'PAID' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
+                          s.paymentStatus === 'PAID' ? 'bg-blue-50 text-blue-700 border border-blue-200' :
                           s.paymentStatus === 'PENDING' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
                           'bg-slate-100 text-slate-600 border border-slate-200'
                         "
@@ -3998,7 +4361,8 @@ void [
                     <td class="py-3.5 px-4 text-right">
                       <div class="flex items-center justify-end gap-1.5">
                         <button
-                          @click="router.push(`/dashboard/users/${s.id}`)"
+                          v-if="isAdmin"
+                          @click="handleNavigateStudent(s.id)"
                           type="button"
                           class="p-1.5 rounded-lg text-slate-400 hover:text-[#6D28D9] hover:bg-purple-50 transition cursor-pointer"
                           title="360° Profilga o'tish"
@@ -4007,6 +4371,7 @@ void [
                         </button>
 
                         <button
+                          v-if="isAdmin"
                           @click="openPaymentForStudent(s)"
                           type="button"
                           class="p-1.5 rounded-lg text-emerald-600 hover:bg-emerald-50 transition cursor-pointer"
@@ -4016,6 +4381,7 @@ void [
                         </button>
 
                         <button
+                          v-if="isAdmin"
                           @click="handleRemoveStudent(s.id, `${s.firstName} ${s.lastName}`)"
                           type="button"
                           class="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
@@ -5107,6 +5473,74 @@ void [
             class="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs transition cursor-pointer disabled:opacity-50 active:scale-95 shadow-xs"
           >
             {{ isSubmittingExam ? "Saqlanmoqda..." : "Imtihon yaratish" }}
+          </button>
+        </div>
+      </form>
+    </Modal>
+
+    <!-- MODAL: ADD MATERIAL -->
+    <Modal :show="showAddMaterialModal" title="Dars materiali qo'shish" @close="showAddMaterialModal = false">
+      <form @submit.prevent="handleSaveNewMaterial" class="space-y-4">
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1">Material nomi *</label>
+          <input
+            v-model="newMaterialTitle"
+            type="text"
+            required
+            placeholder="Masalan: Dars taqdimoti yoki Amaliy kod namunalari"
+            class="w-full px-3.5 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-[#6D28D9]"
+          />
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">Dars mavzusi</label>
+            <select
+              v-model="newMaterialTopic"
+              class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-[#6D28D9] cursor-pointer"
+            >
+              <option value="" disabled>Mavzuni tanlang</option>
+              <option v-for="l in (group?.lessons || [])" :key="l.id" :value="l.topic">
+                {{ l.lessonOrder ? `${l.lessonOrder}. ` : '' }}{{ l.topic }}
+              </option>
+              <option value="Umumiy dars materiali">Umumiy dars materiali</option>
+            </select>
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">Fayl turi</label>
+            <select
+              v-model="newMaterialType"
+              class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-[#6D28D9] cursor-pointer"
+            >
+              <option value="PDF">PDF Hujjat</option>
+              <option value="ZIP">ZIP / Kod arxivi</option>
+              <option value="SLIDES">Taqdimot (PPTX / Slayd)</option>
+              <option value="LINK">Tashqi Havola (GitHub)</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1">Havola yoki Fayl URL manzili</label>
+          <input
+            v-model="newMaterialUrl"
+            type="text"
+            placeholder="https://github.com/... yoki resurs havolasi"
+            class="w-full px-3.5 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-[#6D28D9]"
+          />
+        </div>
+
+        <div class="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+          <button type="button" @click="showAddMaterialModal = false" class="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl cursor-pointer">
+            Bekor qilish
+          </button>
+          <button
+            type="submit"
+            :disabled="!newMaterialTitle"
+            class="px-5 py-2 rounded-xl bg-[#00B533] hover:bg-[#009E2C] text-white font-bold text-xs transition cursor-pointer disabled:opacity-50 active:scale-95 shadow-xs"
+          >
+            Materialni saqlash
           </button>
         </div>
       </form>

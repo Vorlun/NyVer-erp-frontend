@@ -351,12 +351,12 @@ onUnmounted(() => {
             </div>
           </div>
 
-          <!-- "+ Qo'shish" Dropdown Button: Vibrant purple as shown in media_1789125805707.png -->
+          <!-- "+ Qo'shish" Dropdown Button: Warm caramel brown matching theme -->
           <div class="relative dropdown-container">
             <button
               @click.stop="showQuickAddMenu = !showQuickAddMenu; showCalendarMenu = false; showLanguageMenu = false; showNotificationMenu = false; showProfileMenu = false;"
               type="button"
-              class="h-10 px-4 rounded-xl bg-[#7033f3] hover:bg-[#5f22e0] active:bg-[#4e1ac4] text-white text-sm font-bold flex items-center gap-2 transition-all cursor-pointer shadow-xs shrink-0"
+              class="h-10 px-4 rounded-xl bg-[#c26224] hover:bg-[#a6521a] active:bg-[#8c4314] text-white text-sm font-bold flex items-center gap-2 transition-all cursor-pointer shadow-xs shrink-0"
             >
               <Plus class="h-4.5 w-4.5" />
               <span>Qo'shish</span>
@@ -457,7 +457,7 @@ onUnmounted(() => {
                   v-if="notificationsStore.studentUnreadCount > 0"
                   @click="notificationsStore.markAllAsRead"
                   type="button"
-                  class="text-[11px] text-[#6D28D9] font-bold hover:underline cursor-pointer"
+                  class="text-[11px] text-[#c26224] font-bold hover:underline cursor-pointer"
                 >
                   O'qilgan deb belgilash
                 </button>
@@ -499,15 +499,15 @@ onUnmounted(() => {
             <Moon v-else class="h-5 w-5" />
           </button>
 
-          <!-- Student Profile Avatar Initial "S" in purple matching media_1789125805707.png -->
+          <!-- Student Profile Avatar Initial in warm brown -->
           <div class="relative dropdown-container">
             <button
               @click.stop="showProfileMenu = !showProfileMenu; showCalendarMenu = false; showQuickAddMenu = false; showLanguageMenu = false; showNotificationMenu = false;"
               type="button"
-              class="h-10 w-10 rounded-full bg-[#7033f3] text-white text-sm font-extrabold flex items-center justify-center shadow-xs cursor-pointer hover:ring-2 hover:ring-purple-400/50 transition"
+              class="h-10 w-10 rounded-full bg-[#c26224] text-white text-sm font-extrabold flex items-center justify-center shadow-xs cursor-pointer hover:ring-2 hover:ring-orange-300/50 transition"
               title="Profil menyusi"
             >
-              {{ authStore.user?.firstName?.charAt(0) || 'S' }}
+              {{ authStore.user?.firstName?.charAt(0) || 'J' }}
             </button>
 
             <div

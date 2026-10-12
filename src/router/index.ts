@@ -35,6 +35,7 @@ const AdminStudentCoinDetail = () => import('../views/admin/StudentCoinDetailVie
 const TeacherDashboard = () => import('../views/teacher/DashboardView.vue');
 const TeacherAttendance = () => import('../views/teacher/AttendanceView.vue');
 const TeacherHomework = () => import('../views/teacher/HomeworkCheckView.vue');
+const TeacherProfile = () => import('../views/teacher/ProfileView.vue');
 
 // Lazy-loaded Student Views
 const StudentDashboard = () => import('../views/student/DashboardView.vue');
@@ -282,6 +283,11 @@ const routes: RouteRecordRaw[] = [
         path: 'homework',
         name: 'teacher-homework',
         component: TeacherHomework,
+      },
+      {
+        path: 'profile',
+        name: 'teacher-profile',
+        component: TeacherProfile,
       },
     ],
   },

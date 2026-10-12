@@ -301,7 +301,11 @@ const paginationDisplayPages = computed(() => {
 
 function getGroupTeacher(group: Group): string {
   if ((group as any).teachers && (group as any).teachers.length > 0) {
-    const t = (group as any).teachers[0].teacher;
+    const t = (group as any).teachers[0].teacher || (group as any).teachers[0];
+    if (t?.firstName) return `${t.firstName} ${t.lastName || ''}`.trim();
+  }
+  if ((group as any).teacherId) {
+    const t = teachers.value.find((tc) => tc.id === (group as any).teacherId);
     if (t) return `${t.firstName} ${t.lastName || ''}`.trim();
   }
   return 'O\'qituvchi yo\'q';
@@ -782,7 +786,7 @@ async function handleDeleteGroup(group: Group) {
               <!-- Kurs (Pill badge with purple styling - Image 1) -->
               <td class="py-4 px-5 whitespace-nowrap">
                 <span class="inline-block px-3 py-0.5 rounded-full border border-purple-200 bg-purple-50/70 text-[#6D28D9] font-medium text-xs">
-                  {{ group.course?.name || 'full-stack bootcamp' }}
+                  {{ group.course?.name || courses.find((c) => c.id === group.courseId)?.name || 'Kurs belgilanmagan' }}
                 </span>
               </td>
 
@@ -799,7 +803,7 @@ async function handleDeleteGroup(group: Group) {
 
               <!-- Xona -->
               <td class="py-4 px-5 text-slate-700 whitespace-nowrap">
-                {{ group.room?.name || 'MFactor' }}
+                {{ group.room?.name || rooms.find((r) => r.id === group.roomId)?.name || 'Xona belgilanmagan' }}
               </td>
 
               <!-- O'qituvchi -->

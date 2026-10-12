@@ -5,8 +5,6 @@ import { useAuthStore } from "../stores/auth";
 import { useNotificationsStore } from "../stores/notifications";
 import {
   Layers,
-  CalendarCheck,
-  BookOpenCheck,
   Settings,
   ChevronDown,
   ChevronLeft,
@@ -23,6 +21,7 @@ import {
   Check,
   Clock,
   Archive,
+  User as UserIcon,
 } from "lucide-vue-next";
 import nyverLogo from "@/assets/logo.png";
 
@@ -68,7 +67,7 @@ onUnmounted(() => {
   notificationsStore.disconnectWebSocket();
 });
 
-// Primary Navigation Items
+// Primary Navigation Items (Radical minimalism: Guruhlar & Profil)
 const mainNavItems = [
   {
     id: "groups",
@@ -77,29 +76,22 @@ const mainNavItems = [
     to: "/teacher/dashboard",
     checkActive: () =>
       route.path === "/teacher/dashboard" &&
-      (!route.query.tab || route.query.tab === "groups"),
+      (!route.query.tab || route.query.tab === "groups" || route.query.tab === "unassigned"),
   },
   {
-    id: "attendance",
-    label: "Davomat",
-    icon: CalendarCheck,
-    to: "/teacher/attendance",
-    checkActive: () => route.path === "/teacher/attendance",
-  },
-  {
-    id: "homework",
-    label: "Uy vazifalari",
-    icon: BookOpenCheck,
-    to: "/teacher/homework",
-    checkActive: () => route.path === "/teacher/homework",
+    id: "profile",
+    label: "Profil",
+    icon: UserIcon,
+    to: "/teacher/profile",
+    checkActive: () => route.path === "/teacher/profile",
   },
 ];
 
-// Submenu Items (Boshqarish - navigates to sections directly)
+// Submenu Items (Boshqarish - tezkor navigatsiya)
 const submenuItems = [
   {
-    id: "active-groups",
-    label: "Faol Guruhlar",
+    id: "my-groups",
+    label: "Guruhlarim",
     icon: Layers,
     to: "/teacher/dashboard?tab=groups",
     action: () => {
@@ -112,17 +104,17 @@ const submenuItems = [
       (!route.query.tab || route.query.tab === "groups"),
   },
   {
-    id: "upcoming-groups",
-    label: "Yig'ilayotgan Guruhlar",
+    id: "unassigned-groups",
+    label: "Biriktirilmagan Guruhlar",
     icon: Clock,
-    to: "/teacher/dashboard?tab=upcoming",
+    to: "/teacher/dashboard?tab=unassigned",
     action: () => {
-      router.push("/teacher/dashboard?tab=upcoming");
+      router.push("/teacher/dashboard?tab=unassigned");
       closeSubmenu();
       mobileSidebarOpen.value = false;
     },
     checkActive: () =>
-      route.path === "/teacher/dashboard" && route.query.tab === "upcoming",
+      route.path === "/teacher/dashboard" && route.query.tab === "unassigned",
   },
   {
     id: "archive-groups",
@@ -138,28 +130,16 @@ const submenuItems = [
       route.path === "/teacher/dashboard" && route.query.tab === "archive",
   },
   {
-    id: "take-attendance",
-    label: "Davomat Qilish",
-    icon: CalendarCheck,
-    to: "/teacher/attendance",
+    id: "profile-settings",
+    label: "Shaxsiy Profil",
+    icon: UserIcon,
+    to: "/teacher/profile",
     action: () => {
-      router.push("/teacher/attendance");
+      router.push("/teacher/profile");
       closeSubmenu();
       mobileSidebarOpen.value = false;
     },
-    checkActive: () => route.path === "/teacher/attendance",
-  },
-  {
-    id: "check-homework",
-    label: "Vazifalarni Tekshirish",
-    icon: BookOpenCheck,
-    to: "/teacher/homework",
-    action: () => {
-      router.push("/teacher/homework");
-      closeSubmenu();
-      mobileSidebarOpen.value = false;
-    },
-    checkActive: () => route.path === "/teacher/homework",
+    checkActive: () => route.path === "/teacher/profile",
   },
 ];
 
@@ -444,12 +424,12 @@ function handleLogout() {
               />
               <div>
                 <span
-                  class="font-extrabold text-slate-900 leading-tight block text-base"
-                  >NyVer Academy</span
+                  class="font-black text-slate-900 leading-tight block text-base"
+                  >NyVer<span class="text-[#6D28D9]">Edu</span></span
                 >
                 <span
-                  class="text-[11px] text-emerald-600 font-semibold uppercase"
-                  >Ustoz Kabineti</span
+                  class="text-[11px] text-[#6D28D9] font-bold uppercase tracking-wider"
+                  >Ustoz Paneli</span
                 >
               </div>
             </div>

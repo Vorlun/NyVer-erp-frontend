@@ -687,24 +687,19 @@ function onScheduleLessonClick(lesson: any) {
 }
 
 function getTeacherNameForGroup(g: any): string {
-  if (g.teachers && g.teachers.length > 0 && g.teachers[0]?.teacher) {
-    const t = g.teachers[0].teacher;
-    return `${t.firstName} ${t.lastName || ''}`.trim();
+  if (g.teachers && g.teachers.length > 0) {
+    const t = g.teachers[0]?.teacher || g.teachers[0];
+    if (t?.firstName) return `${t.firstName} ${t.lastName || ''}`.trim();
   }
   if (g.teacherId) {
     const found = users.value.find((u) => u.id === g.teacherId);
     if (found) return `${found.firstName} ${found.lastName || ''}`.trim();
   }
-  if (g.name?.includes('FE-201')) return 'Rustam Qodirov';
-  if (g.name?.includes('BE-105')) return 'Alisher Zokirov';
-  if (g.name?.includes('IELTS')) return 'Dilnoza Karimova';
-  if (g.name?.includes('DS-101')) return 'Bekzod Toirov';
-  if (g.name?.includes('UI-102')) return 'Malika Yo\'ldosheva';
   const firstTeacher = users.value.find((u) => u.role === 'TEACHER');
   if (firstTeacher) {
     return `${firstTeacher.firstName} ${firstTeacher.lastName || ''}`.trim();
   }
-  return 'Rustam Qodirov';
+  return 'O\'qituvchi yo\'q';
 }
 
 
